@@ -16,7 +16,7 @@ np.random.seed(10)
 # Define Simulation Parameters:
 ##############################$
 # Number of Nodes
-N = 30
+N = 12
 NumberOfCars = 0
 MaxNumberOfNodesPerCar = int(N*0.75) if NumberOfCars > 1 else N
 NumberOfChargeStations = 3
