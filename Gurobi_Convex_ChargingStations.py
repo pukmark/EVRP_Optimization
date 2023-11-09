@@ -16,45 +16,17 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
     # Create variables
     DecisionVar = model.addMVar(shape=(n,n),vtype=GRB.BINARY, name="DecisionVar")
-    # DecisionVar = model.addMVar(shape=(n,n), name="DecisionVar")
     y = model.addMVar(n, name="y") # the charging time spent at each node
-    # a2y = model.addMVar(n, lb=-GRB.INFINITY, name="a2y") # the charging time spent at each node
-    # expy = model.addMVar(n, name="expy") # the charging time spent at each node
+    a2y = model.addMVar(n, lb=-GRB.INFINITY, name="a2y") # the charging time spent at each node
+    expy = model.addMVar(n, name="expy") # the charging time spent at each node
     SigmaTf2 = model.addMVar(n, name="SigmaTf2") # Time elapsed when arriving at each node
     SigmaTf = model.addMVar(n, name="SigmaTf") # Time elapsed when arriving at each node
     Tf = model.addMVar(n, name="Tf") # Final time
 
     InitialTraj = np.zeros((n,n),dtype=int)
 
-    # if n == 50:
-    #     BestTraj =  np.array([[ 0, 10 ,13,  8 , 5 , 6 ,46 ,27 , 2 ,26 ,28 ,19, 43 ,11 ,32 , 0],
-    #                     [ 0, 45,  7 ,15,  4 ,20, 37,  3, 14 ,16, 41, 18 ,47, 30 ,23 ,39 ,31, 40 ,29 , 0]], dtype=object)
-    #     for i in range(BestTraj.shape[0]):
-    #         for j in range(len(BestTraj[i])-1):
-    #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
-
-    # if n ==15:
-    #     BestTraj =  np.array([[ 0 ,13 , 8 ,12 , 9 ,10 ,11, 14 , 0  ],
-    #                             [ 0, 3, 4, 5 ,1, 6, 2, 7 ,0 ]], dtype=object)
-    #     for i in range(BestTraj.shape[0]):
-    #         for j in range(len(BestTraj[i])-1):
-    #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
-    
-    # if n == 10:
-    #     BestTraj =  np.array([[0, 4, 8, 1, 9, 5, 6, 3, 2, 7, 0]], dtype=object)
-    #     for i in range(BestTraj.shape[0]):
-    #         for j in range(len(BestTraj[i])-1):
-    #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
-
-    # if n == 8:
-    #     BestTraj =  np.array([[0, 4, 1, 7, 3, 6, 5, 2, 0]], dtype=object)
-    #     for i in range(BestTraj.shape[0]):
-    #         for j in range(len(BestTraj[i])-1):
-    #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
-
-
-    # if n == 11:
-    #     BestTraj =  np.array([[0, 3, 8, 4, 2, 5, 7, 9, 6, 1, 10, 0]], dtype=object)
+    # if n == 7:
+    #     BestTraj =  np.array([[0, 4, 6, 3,0],[1, 5,2,1]], dtype=object)
     #     for i in range(BestTraj.shape[0]):
     #         for j in range(len(BestTraj[i])-1):
     #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
@@ -80,13 +52,13 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
     # Defining the constraints
     model.addConstrs(DecisionVar[i,i]==0 for i in range(0,n)) # No self loops
+    model.addConstrs(DecisionVar[i,j]==0 for i in range(0,NominalPlan.NumberOfDepots) for j in range(0,NominalPlan.NumberOfDepots) if i!=j) # No connections between depots
     if NominalPlan.ReturnToBase == True:
-        model.addConstrs(DecisionVar[i,:].sum()==1 for i in range(1,n)) # Every node has 1 exit edge
+        model.addConstrs(DecisionVar[i,:].sum()==NominalPlan.CarsInDepots.count(i) for i in range(NominalPlan.NumberOfDepots)) # Node 0 has Ncars exit edges
+        model.addConstrs(DecisionVar[i,:].sum()<=1 for i in NominalPlan.ChargingStations) # Every node has 1 exit edge
+        model.addConstrs(DecisionVar[i,:].sum()==1 for i in range(NominalPlan.NumberOfDepots,n) if i not in NominalPlan.ChargingStations) # Every node has 1 exit edge
         model.addConstrs(DecisionVar[:,i].sum()==DecisionVar[i,:].sum() for i in range(0,n)) # Node 0 has the same number of entry and exit edges
-        if NominalPlan.NumberOfCars == 0:
-            model.addConstr(DecisionVar[0,:].sum()>=1) # Node 0 has Ncars exit edges
-        else:
-            model.addConstr(DecisionVar[0,:].sum()==NominalPlan.NumberOfCars) # Node 0 has Ncars exit edges
+        
     else:
         model.addConstr(DecisionVar.sum(0, '*')==NominalPlan.NumberOfCars) # Node 0 has Ncars exit edges
         model.addConstr(DecisionVar.sum('*', 0)==0) # Node 0 has no entry edges
@@ -94,10 +66,22 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
     # Miller–Tucker–Zemlin formulation for subtour elimination
     u = model.addMVar(n, name="u") # u[i] is the position of node i in the path
-    model.addConstr(u[0]==1) # Node 0 is the first node
-    model.addConstrs(u[i] >= 2 for i in range(1,n)) # Node 0 is the first node
-    model.addConstrs(u[i] <= n for i in range(1,n))
-    model.addConstrs(u[i]+NominalPlan.MaxNumberOfNodesPerCar*(DecisionVar[i,j]-1)+1 <= u[j] for i in range(1,n) for j in range(1,n) if i!=j)
+    LargeU = 1+NominalPlan.NumberOfDepots*(1+NominalPlan.MaxNumberOfNodesPerCar)
+    for i in range(NominalPlan.NumberOfDepots):
+        model.addConstr(u[i]==1+i*(1+NominalPlan.MaxNumberOfNodesPerCar))
+    model.addConstrs(u[i] >= 2 for i in range(NominalPlan.NumberOfDepots,n)) # Node 0 is the first node
+    model.addConstrs(u[i]+LargeU*(DecisionVar[i,j]-1)+1 <= u[j] for i in range(0,n) for j in range(NominalPlan.NumberOfDepots,n) if i!=j)
+    for j in range(NominalPlan.NumberOfDepots):
+        StartU = 1+j*(1+NominalPlan.MaxNumberOfNodesPerCar)
+        EndU = (j+1)*(1+NominalPlan.MaxNumberOfNodesPerCar)
+        model.addConstrs(u[i] >= StartU - LargeU*(1-DecisionVar[i,j]) for i in range(NominalPlan.NumberOfDepots,n))
+        model.addConstrs(u[i] <= EndU   + LargeU*(1-DecisionVar[i,j]) for i in range(NominalPlan.NumberOfDepots,n))
+
+    Load = model.addMVar(n, name="u") # Load[i] is the Remainded Load of node i in the path
+    LargeLoad = 2*PltParams.LoadCapacity
+    model.addConstrs(Load[i] == PltParams.LoadCapacity for i in range(NominalPlan.NumberOfDepots)) # Load at Depot is full load
+    model.addConstrs(Load[i] >= 0 for i in range(NominalPlan.N)) # Load at Nodes is non negative
+    model.addConstrs(Load[i]-NominalPlan.LoadDemand[j] >= Load[j]+LargeLoad*(DecisionVar[i,j]-1) for i in range(n) for j in range(NominalPlan.NumberOfDepots,n) if i!=j)
 
     # Dantzig–Fulkerson–Johnson formulation for subtour elimination
     # if (n/(NominalPlan.NumberOfCars+1))<13:
@@ -112,34 +96,33 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     eSigmaF2 = model.addMVar(n, name="eSigmaF2") # the energy when arriving at each node
     eSigmaF = model.addMVar(n, name="eSigmaF") # the energy when arriving at each node
     eSigma = model.addMVar(n, name="eSigma") # the energy when arriving at each node
-    # a1 = PltParams.BatteryCapacity/PltParams.FullRechargeRateFactor
-    # a2 = PltParams.FullRechargeRateFactor*NominalPlan.StationRechargePower/PltParams.BatteryCapacity
+    a1 = PltParams.BatteryCapacity/PltParams.FullRechargeRateFactor
+    a2 = PltParams.FullRechargeRateFactor*NominalPlan.StationRechargePower/PltParams.BatteryCapacity
     for i in range(0, n):
-        if np.any(i == NominalPlan.ChargingStations):
+        if i in NominalPlan.ChargingStations:
             model.addConstr(y[i]>=0.0) # Charging time is always positive
-            # model.addConstr(y[i]<=15.0) # Charging time is always positive
-            # model.addConstr(a2y[i]==-a2*y[i])
-            # model.addGenConstrLog(expy[i], a2y[i])
+            model.addConstr(a2y[i]==-a2*y[i])
+            model.addGenConstrLog(expy[i], a2y[i])
             model.addConstr(ef[i]<= PltParams.BatteryCapacity)
-            # if PltParams.RechargeModel == 'ConstantRate':
-            model.addConstr(ef[i]==e[i]+y[i]*NominalPlan.StationRechargePower)
-            # elif PltParams.RechargeModel == 'ExponentialRate':
-                # model.addConstr(ef[i]==a1+(e[i]-a1)*expy[i])
+            if PltParams.RechargeModel == 'ConstantRate':
+                model.addConstr(ef[i]==e[i]+y[i]*NominalPlan.StationRechargePower)
+            elif PltParams.RechargeModel == 'ExponentialRate':
+                model.addConstr(ef[i]==a1+(e[i]-a1)*expy[i])
         else:
             model.addConstr(y[i]==0.0) # Not a charging station, no charging time
             model.addConstr(e[i]==ef[i])
 
-    model.addConstr(e[0] == PowerLeft) # Initial energy
-    model.addConstrs(e[i] >= PltParams.MinimalSOC+EnergyAlpha*eSigma[i] for i in range(1,n)) # Energy is always positive
+    model.addConstrs(e[j] == PowerLeft for j in range(NominalPlan.NumberOfDepots)) # Initial energy
+    model.addConstrs(e[i] >= PltParams.MinimalSOC+EnergyAlpha*eSigma[i] for i in range(NominalPlan.NumberOfDepots,n)) # Energy is always positive
 
     # # Energy uncertainty constraints
     eSigmaMax = n*np.max(NominalPlan.NodesEnergyTravelSigma)**2
-    model.addConstr(eSigma2[0] == 0.0)
+    model.addConstrs(eSigma2[i] == 0.0 for i in range(NominalPlan.NumberOfDepots))
     for i in range(0, n):
         model.addConstr(eSigma2[i] == eSigma[i]*eSigma[i])
         model.addConstr(eSigmaF2[i] == eSigmaF[i]*eSigmaF[i])
-        model.addConstr(eSigmaF2[i] + (1-DecisionVar[i,0])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma[i,0]**2 )
-        for j in range(1, n):
+        model.addConstrs(eSigmaF2[i] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma[i,j]**2 for j in range(NominalPlan.NumberOfDepots) if i != j)
+        for j in range(NominalPlan.NumberOfDepots, n):
             if i != j:
                 # Energy Sumation over edges (with charging), if edges are not connected, then the energy is not affected
                 model.addConstr( eSigma2[j] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma[i,j]**2 )
@@ -147,8 +130,8 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     
     # Add the energy constraints for the return to base case
     if NominalPlan.ReturnToBase == True:
-        for i in range(1, n):
-            model.addConstr(PltParams.MinimalSOC + (DecisionVar[i,0]-1)*PltParams.BatteryCapacity*3.0 <= ef[i] - EnergyAlpha*eSigmaF[i] + NominalPlan.NodesEnergyTravel[i,0] )
+        for i in range(NominalPlan.NumberOfDepots, n):
+                model.addConstrs(PltParams.MinimalSOC + (DecisionVar[i,j]-1)*PltParams.BatteryCapacity*3.0 <= ef[i] - EnergyAlpha*eSigmaF[i] + NominalPlan.NodesEnergyTravel[i,j] for j in range(0,NominalPlan.NumberOfDepots))
 
     # Time Dynamics (constraints):
     MeanT = model.addMVar(n, name="MeanT") # Time elapsed when arriving at each node
@@ -156,10 +139,10 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     MaxChargeT = (PltParams.BatteryCapacity-PltParams.MinimalSOC)/NominalPlan.StationRechargePower
     LargeT = np.max(NominalPlan.NodesTimeOfTravel)*n+NominalPlan.NumberOfChargeStations*MaxChargeT
     LargeSigmaT2 = n*np.max(NominalPlan.TravelSigma)**2
-    model.addConstr(MeanT[0] == 0.0)
-    model.addConstr(SigmaT2[0] == 0.0)
+    model.addConstrs(MeanT[i] == 0.0 for i in range(0, NominalPlan.NumberOfDepots))
+    model.addConstrs(SigmaT2[i] == 0.0 for i in range(0, NominalPlan.NumberOfDepots))
     for i in range(0, n):
-        for j in range(1, n):
+        for j in range(NominalPlan.NumberOfDepots, n):
             if i != j:
                 if np.any(i == NominalPlan.ChargingStations):
                     model.addConstr( MeanT[j] + (1-DecisionVar[i,j])*LargeT >= MeanT[i] + DecisionVar[i,j]*NominalPlan.NodesTimeOfTravel[i,j] + y[i] )
@@ -167,7 +150,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
                     model.addConstr( MeanT[j] + (1-DecisionVar[i,j])*LargeT >= MeanT[i] + DecisionVar[i,j]*NominalPlan.NodesTimeOfTravel[i,j] )
                 model.addConstr( SigmaT2[j] + (1-DecisionVar[i,j])*LargeSigmaT2 >= SigmaT2[i] + DecisionVar[i,j]*NominalPlan.TravelSigma[i,j]**2 )
     if NominalPlan.ReturnToBase == True:
-        for i in range(1, n):
+        for i in range(NominalPlan.NumberOfDepots, n):
                 if np.any(i == NominalPlan.ChargingStations):
                     model.addConstr(Tf[i] + (1-DecisionVar[i,0])*LargeT >= MeanT[i] + NominalPlan.NodesTimeOfTravel[i,0] + y[i] )
                 else:
@@ -197,19 +180,16 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
     # # Transforming the solution to a path
     X_sol = np.argwhere(np.round(DecisionVar.X)==1)
-    if NominalPlan.NumberOfCars == 0:
-        M = int(np.sum(DecisionVar.X[0,:]))
-    else:
-        M = NominalPlan.NumberOfCars
+    M = np.sum(NominalPlan.NumberOfCars)
     NodesTrajectory = np.zeros((n+1, M), dtype=int)
 
     for m in range(M):
-        NodesTrajectory[0,m] = 0
+        NodesTrajectory[0,m] = X_sol[m,0]
         NodesTrajectory[1,m] = X_sol[m,1]
         i = 2
         while True:
             NodesTrajectory[i,m] = X_sol[np.argwhere(X_sol[:,0]==NodesTrajectory[i-1,m]),1]
-            if NodesTrajectory[i,m] == 0:
+            if NodesTrajectory[i,m] < NominalPlan.NumberOfDepots:
                 break
             i += 1
 
@@ -229,5 +209,5 @@ def cb(model, where):
     # Terminate if objective has not improved in 300s
     if (time.time() - model._time > model._MaxCalcTime) and model._cur_obj< 1.0e8:
         model.terminate()
-    elif (time.time() - model._time > 3600):
+    elif (time.time() - model._time > model._MaxCalcTime*10.0):
         model.terminate()
