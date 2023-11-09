@@ -422,15 +422,15 @@ if OptVal > 0:
     print('Solution Gap [%]= ', (Cost-OptVal)/OptVal*100)
 
 
-if ScenarioFileName is not None:
-    ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
-    path = os.path.join("Results", ScenarioName) 
-    os.makedirs(path, exist_ok=True)
-    for i in range(NominalPlan.NumberOfCars):
-        PlotGraph([i], NodesGroups, NodesTrajectory, TimeVec, UncertainTime, Energy, UncertainEnergy, NominalPlan, PltParams)
-        FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(MaxNodesToSolver)+"Method"+str(ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)+"CarNum_"+str(i)+'.png'
-        plt.savefig("Results//"+ScenarioName+"//"+FileName, dpi=300)
-        plt.close()
+# if ScenarioFileName is not None:
+#     ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
+#     path = os.path.join("Results", ScenarioName) 
+#     os.makedirs(path, exist_ok=True)
+#     for i in range(NominalPlan.NumberOfCars):
+#         PlotGraph([i], NodesGroups, NodesTrajectory, TimeVec, UncertainTime, Energy, UncertainEnergy, NominalPlan, PltParams)
+#         FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(MaxNodesToSolver)+"Method"+str(ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)+"CarNum_"+str(i)+'.png'
+        # plt.savefig("Results//"+ScenarioName+"//"+FileName, dpi=300)
+#         plt.close()
 
 col_vec = ['m','y','b','r','g','c','k']
 plt.figure()
