@@ -94,7 +94,7 @@ PltParams = DataTypes.PlatformParams()
 ScenarioFileName = None
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n22-k4.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n23-k3.evrp'
-# ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n30-k3.evrp'
+ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n30-k3.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n33-k4.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n51-k5.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/E-n76-k7.evrp'
@@ -102,12 +102,12 @@ ScenarioFileName = None
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n143-k7.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n214-k11.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n351-k40.evrp'
-# ScenarioFileName = './VRP Instances/Leuven1.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n101-k25.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n251-k28.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n336-k84.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n502-k39.evrp'
-ScenarioFileName = './VRP Instances/Uchoa/X-n1001-k43.evrp'
+# ScenarioFileName = './VRP Instances/Uchoa/X-n1001-k43.evrp'
+# ScenarioFileName = './VRP Instances/Leuven1.evrp'
 # Number of Nodes (Rnadomized Scenario):
 N = 40
 CarsInDepots = [0,0] # Number of Cars per depot
@@ -130,7 +130,7 @@ PltParams.RechargeModel = 'ConstantRate' # 'ExponentialRate' or 'ConstantRate'
 SolverType = 'Recursive' # 'Gurobi' or 'Recursive' or 'Gurobi_NoClustering'
 ClusteringMethod = "Max_Eigenvalue" # "Max_Eigenvalue" or "Frobenius" or "Sum_AbsEigenvalue" or "Mean_MaxRow" or "PartialMax_Eigenvalue" or "Greedy_Method"
 MaxCalcTimeFromUpdate = 30.0 # Max time to calculate the solution from the last update [sec]
-iplot = 0 # 0: No Plot, 1: Plot Main Cluster, 2: Plot All Clusters, 3: Plot Connected Tours
+iplot = 1 # 0: No Plot, 1: Plot Main Cluster, 2: Plot All Clusters, 3: Plot Connected Tours
 ##############################$
 # If MustVisitAllNodes is True, then the mission time is set to a large number
 if MustVisitAllNodes == True:
@@ -261,7 +261,7 @@ if np.sum(NominalPlan.LoadDemand)> PltParams.LoadCapacity*NominalPlan.NumberOfCa
 t = time.time()
 NodesTrajectory = np.zeros((N+1,M), dtype=int)
 EnergyEnteringNodes = np.zeros((N,))
-ChargingTime = np.zeros((N,))
+ChargingTime = np.zeros((N+1,M))
 EnergyExitingNodes = np.zeros((N,))
 Cost = 0.0
 if SolverType == 'Gurobi_NoClustering':
@@ -331,18 +331,28 @@ else:
                 if np.sum(NominalSubPlanGroup.LoadDemand)> PltParams.LoadCapacity:
                     print('Load Demand is too high')
                     break
-
-                BestPlan, NodesTrajectorySubGroup, CostSubGroup, ChargingStationsDataSubGroup = SolveParallelRecursive_ChargingStations(PltParams=PltParams,
-                                                                        NominalPlan= NominalSubPlanGroup,
-                                                                        i_CurrentNode = 0, 
-                                                                        TourTime = 0.0,
-                                                                        TourTimeUncertainty = 0.0,
-                                                                        EnergyLeft = PltParams.BatteryCapacity + MaxChargingPotential,
-                                                                        EnergyLeftUncertainty = 0.0,
-                                                                        ChargingStationsData = DataTypes.ChargingStations(NominalSubPlanGroup.ChargingStations),
-                                                                        NodesTrajectory = [], 
-                                                                        BestPlan = DataTypes.BestPlan(NominalSubPlanGroup.N, NominalSubPlanGroup.ChargingStations, time.time()),
-                                                                        MaxCalcTimeFromUpdate = MaxCalcTimeFromUpdate)
+                
+                iAddCS = 0
+                while True:
+                    BestPlan, NodesTrajectorySubGroup, CostSubGroup, ChargingStationsDataSubGroup = SolveParallelRecursive_ChargingStations(PltParams=PltParams,
+                                                                            NominalPlan= NominalSubPlanGroup,
+                                                                            i_CurrentNode = 0, 
+                                                                            TourTime = 0.0,
+                                                                            TourTimeUncertainty = 0.0,
+                                                                            EnergyLeft = PltParams.BatteryCapacity + MaxChargingPotential,
+                                                                            EnergyLeftUncertainty = 0.0,
+                                                                            ChargingStationsData = DataTypes.ChargingStations(NominalSubPlanGroup.ChargingStations),
+                                                                            NodesTrajectory = [], 
+                                                                            BestPlan = DataTypes.BestPlan(NominalSubPlanGroup.N, NominalSubPlanGroup.ChargingStations, time.time()),
+                                                                            MaxCalcTimeFromUpdate = MaxCalcTimeFromUpdate)
+                
+                    if BestPlan.Cost == np.inf:
+                        print('No Solution Found. Adding More Charging Station Stops...')
+                        NominalSubPlanGroup = AddChargingStations(NominalSubPlanGroup, iAddCS)
+                        iAddCS += 1
+                    else:
+                        break
+                    
 
             MaxChargingPotential = ChargingStationsDataSubGroup.MaxChargingPotential
             if NumSubGroups <= 1 or iSubGroup == 0:
@@ -366,7 +376,7 @@ else:
         NodesTrajectoryGroup = np.array(NodesTrajectoryGroup).reshape(-1,1)
         for i in range(ChargingStationsDataGroup.ChargingStationsNodes.shape[0]):
             if ChargingStationsDataGroup.ChargingTime[i] > 0:
-                ChargingTime[NodesSubGroups[iSubGroup][ChargingStationsDataGroup.ChargingStationsNodes[i]]] = ChargingStationsDataGroup.ChargingTime[i]
+                ChargingTime[NodesSubGroups[iSubGroup][ChargingStationsDataGroup.ChargingStationsNodes[i]],Ncar] = ChargingStationsDataGroup.ChargingTime[i]
 
         print('Car ', Ncar, ' Nodes: ', NodesTrajectoryGroup.T[0].tolist(), 'Cost: '+"{:.2f}".format(CostGroup))
         for i in range(len(NodesTrajectoryGroup)):
@@ -389,14 +399,14 @@ for m in range(NumberOfCars):
     i = 0
     RemainingLoad[NodesTrajectory[i,m],:] = PltParams.LoadCapacity
     while NodesTrajectory[i,m] >= NominalPlan.NumberOfDepots or i==0:
-        TimeVec[i+1,m] = TimeVec[i,m] + NominalPlan.NodesTimeOfTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + ChargingTime[NodesTrajectory[i,m]]
+        TimeVec[i+1,m] = TimeVec[i,m] + NominalPlan.NodesTimeOfTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + ChargingTime[NodesTrajectory[i,m],m]
         RemainingLoad[i+1,m] = RemainingLoad[i,m] - NominalPlan.LoadDemand[NodesTrajectory[i,m]]
         if PltParams.RechargeModel == 'ConstantRate':
-            Energy[i+1,m] = Energy[i,m] + NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + NominalPlan.StationRechargePower*ChargingTime[NodesTrajectory[i+1,m]]
+            Energy[i+1,m] = Energy[i,m] + NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + NominalPlan.StationRechargePower*ChargingTime[NodesTrajectory[i+1,m],m]
             EnergySigma2[i+1,m] = EnergySigma2[i,m] + NominalPlan.NodesEnergyTravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]**2
             TimeSigma2[i+1,m] = TimeSigma2[i,m] + NominalPlan.TravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]**2
         else:
-            Energy[i+1,m] = NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + (a1 + (Energy[i,m]-a1)*np.exp(-a2*ChargingTime[NodesTrajectory[i,m]]))
+            Energy[i+1,m] = NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + (a1 + (Energy[i,m]-a1)*np.exp(-a2*ChargingTime[NodesTrajectory[i,m],m]))
         i += 1
 EnergySigma = np.sqrt(EnergySigma2)
 TimeSigma = np.sqrt(TimeSigma2)
@@ -416,16 +426,16 @@ while np.sum(NodesTrajectory[-2,:]) < NominalPlan.NumberOfDepots:
 print(SolverType+' Trajectory Time = ', np.sum(np.max(TimeVec+NominalPlan.TimeAlpha*TimeSigma, axis=0)))
 for i in range(NumberOfCars):
     iDepot = np.argwhere(NodesTrajectory[:,i] < NominalPlan.NumberOfDepots)[1]
-    print('Car ', i, ' Trajectory: ', NodesTrajectory[:,i].T, 'Remaining Load: ', RemainingLoad[iDepot[0],i])
+    print('Car ', i, ' Trajectory: ', NodesTrajectory[:,i].T, 'Remaining Load: ', RemainingLoad[iDepot[0],i], ', Min Energy Along Traj: ',"{:.2f}".format(np.min(UncertainEnergy[:,i])))
 
 if OptVal > 0:
     print('Solution Gap [%]= ', (Cost-OptVal)/OptVal*100)
 
 
-# if ScenarioFileName is not None:
-#     ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
-#     path = os.path.join("Results", ScenarioName) 
-#     os.makedirs(path, exist_ok=True)
+if ScenarioFileName is not None:
+    ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
+    path = os.path.join("Results", ScenarioName) 
+    os.makedirs(path, exist_ok=True)
 #     for i in range(NominalPlan.NumberOfCars):
 #         PlotGraph([i], NodesGroups, NodesTrajectory, TimeVec, UncertainTime, Energy, UncertainEnergy, NominalPlan, PltParams)
 #         FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(MaxNodesToSolver)+"Method"+str(ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)+"CarNum_"+str(i)+'.png'
@@ -502,20 +512,20 @@ for m in range(NominalPlan.NumberOfCars):
     # plt.plot(EnergyExitingNodes[NodesTrajectory[:,m]],'x:',color='k')
     
 
-for i in range(NominalPlan.NumberOfChargeStations):
-    j = NominalPlan.ChargingStations[i]
-    indx = np.where(NodesTrajectory == j)
-    if ChargingTime[j] > 0:
-        colr = col_vec[indx[1][0]%len(col_vec)]
-        if PltParams.RechargeModel == 'ConstantRate':
-            Engery_i = ChargingTime[j]*NominalPlan.StationRechargePower
-        else:
-            Engery_i = a1 + (Energy[indx[0][0],indx[1][0]]-a1)*np.exp(-a2*ChargingTime[j])
-        plt.arrow(indx[0][0],0,0,max(Engery_i,1.0), color=colr, width= 0.1)
-        plt.text(indx[0][0]+0.2,5+i*5,"{:.2f}".format(Engery_i), color=colr,fontsize=20)
+    for i in range(NominalPlan.NumberOfChargeStations):
+        j = NominalPlan.ChargingStations[i]
+        indx = np.where(NodesTrajectory[:,m] == j)
+        if indx[0].shape[0]>0 and ChargingTime[j,m] > 0:
+            if PltParams.RechargeModel == 'ConstantRate':
+                Engery_i = ChargingTime[j,m]*NominalPlan.StationRechargePower
+            else:
+                Engery_i = a1 + (Energy[indx[0][0],indx[1][0]]-a1)*np.exp(-a2*ChargingTime[j,m])
+            plt.arrow(indx[0][0],0,0,max(Engery_i,1.0), color=colr, width= 0.1)
+            plt.text(indx[0][0]+0.2,5+i*5,"{:.2f}".format(Engery_i), color=colr,fontsize=20)
 plt.xlabel('Nodes')
 FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(MaxNodesToSolver)+"Method"+str(ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)
 if ScenarioFileName is not None:
+    ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
     plt.savefig("Results//"+ScenarioName+"//"+FileName+'.png', dpi=300)
 else:
     plt.savefig("Results//Nodes_"+FileName+'.png', dpi=300)
@@ -562,9 +572,9 @@ for n in range(Nmc):
         EnergyEntered = np.zeros((N+1,1)) + InitialChargeStage
         EnergyExited = np.zeros((N+1,1)) + InitialChargeStage
         for i in range(NodesTrajectory.shape[0]):
-            TimeVec[m] += NominalPlan.NodesTimeOfTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + ChargingTime[NodesTrajectory[i,m]] + np.random.normal(0,1)*NominalPlan.TravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]
+            TimeVec[m] += NominalPlan.NodesTimeOfTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + ChargingTime[NodesTrajectory[i,m].m] + np.random.normal(0,1)*NominalPlan.TravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]
             EnergyEntered[i+1] = EnergyExited[i] + NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + np.random.normal(0,1)*NominalPlan.NodesEnergyTravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]
-            EnergyExited[i+1] = EnergyEntered[i+1] + ChargingTime[NodesTrajectory[i+1,m]]*NominalPlan.StationRechargePower
+            EnergyExited[i+1] = EnergyEntered[i+1] + ChargingTime[NodesTrajectory[i+1,m],m]*NominalPlan.StationRechargePower
             EnergyExited[i+1] = min(EnergyExited[i+1],PltParams.BatteryCapacity)
             if i>0 and NodesTrajectory[i+1,m] < NominalPlan.NumberOfDepots:
                 break
