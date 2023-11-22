@@ -168,7 +168,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     model._MaxCalcTime = MaxCalcTimeFromUpdate
 
     # Optimize model
-    # model.setParam("Threads", 8)
+    # model.setParam("Threads", 1)
     model.setParam("NodefileStart", 0.5)
     # model.setParam("WorkLimit", 15)
     # model.setParam("MIPGap", 0.01)

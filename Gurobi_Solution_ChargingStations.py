@@ -234,7 +234,7 @@ def SolveGurobi_ChargingStations_MinMax(PltParams, NominalPlan, NodesWorkDone, T
     model._time = time.time()
 
     # Optimize model
-    model.setParam("Threads", 10)
+    model.setParam("Threads", 1)
     model.setParam("TimeLimit", 60)
     model.setParam("MIPGap", 0.01)
     model.setParam("NonConvex", 2)
@@ -258,7 +258,7 @@ def SolveGurobi_ChargingStations_MinMax(PltParams, NominalPlan, NodesWorkDone, T
             if NodesTrajectory[i,m] == 0:
                 break
             i += 1
-
+    
     return NodesTrajectory, model.ObjVal, e.X, y.X, ef.X
 
 def cb(model, where):
