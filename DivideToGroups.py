@@ -144,7 +144,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     EntropyChangeCriteria = 0.001
     t0 = time.process_time()
     # i1 = 2
-    print("Initial Entropy: ", BestEntropy,", Number Of Nodes: ", N," Number Of Cars: ", M)
+    print("Initial Entropy: {:3.2e}".format(BestEntropy),", Number Of Nodes: ", N," Number Of Cars: ", M)
     # Move nodes between groups:
     for iter in range(100):
         t0_iter = time.process_time()
@@ -182,7 +182,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                         BestEntropy_i = CalcEntropy(NodesGroups.copy(), NodesTimeOfTravel, Method)
                 CurNodesGroups[iGroup] = np.sort(CurNodesGroups[iGroup])
             if time.process_time()-t0_iter > 5.0:
-                print("iteration = "+str(iter)+", SubIteration = "+str(iter2)+", Entropy = {:}".format(BestEntropy), ", Iteration Clustering Time = {:}".format(time.process_time()-t0_iter)+"[sec]")
+                print("iteration = "+str(iter)+", SubIteration = "+str(iter2)+", Entropy = {::3.2e}".format(BestEntropy), ", Iteration Clustering Time = {::3.2e}".format(time.process_time()-t0_iter)+"[sec]")
             if not GroupChanged or (Entropy_prev - BestEntropy)/Entropy_prev < EntropyChangeCriteria:
                 break
             Entropy_prev = BestEntropy
@@ -222,7 +222,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
         
         # Switch between groups 1 to 2:
         if iter%2 == 1 and GroupChanged == True:
-            print("iteration = "+str(iter)+", Entropy = {:}".format(BestEntropy), ", Iteration Clustering Time = {:}".format(time.process_time()-t0_iter)+"[sec]")
+            print("iteration = "+str(iter)+", Entropy = {:3.2e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.process_time()-t0_iter)+"[sec]")
             continue
         CurNodesGroups = NodesGroups.copy()
         for iGroup in range(M):
@@ -267,7 +267,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
         # if (Entropy_prev-BestEntropy)/Entropy_prev < EntropyChangeCriteria:
         #     break
         Entropy_prev = BestEntropy
-        print("iteration = "+str(iter)+", Entropy = {:}".format(BestEntropy), ", Iteration Clustering Time = {:}".format(time.process_time()-t0_iter)+"[sec]")
+        print("iteration = "+str(iter)+", Entropy = {:3.2e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.process_time()-t0_iter)+"[sec]")
         if not GroupChanged:
             break
             # Switch between groups 1 to 2:
@@ -310,7 +310,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     #                         NodesGroups[iGroup] = SubNodesGroups[0]
     #                         NodesGroups[jGroup] = SubNodesGroups[1]
     # BestEntropy = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
-    print("Total Clustering Time = {:}".format(time.process_time()-t0)+"[sec]")
+    print("Total Clustering Time = {:3.2f}".format(time.process_time()-t0)+"[sec]")
 
     # Make sure that the first group has the depot:
     if NodesGroups[0][0] != 0:
@@ -336,7 +336,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
         CurGroupIntegration = np.append(CurGroupIntegration, NodesGroups[i])
 
     # Print summary:
-    print("Final Entropy: ", CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method)))    
+    print("Final Entropy: {:3.2e}".format(CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))))    
     for i in range(M):
         GroupTimeMatrix = CreateGroupMatrix(NodesGroups[i], NodesTimeOfTravel)
         w, v = np.linalg.eig(GroupTimeMatrix)

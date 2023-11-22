@@ -102,11 +102,11 @@ ScenarioFileName = None
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n143-k7.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n214-k11.evrp'
 # ScenarioFileName = './VRP Instances/evrp-benchmark-set/X-n351-k40.evrp'
-# ScenarioFileName = './VRP Instances/Uchoa/X-n101-k25.evrp'
+ScenarioFileName = './VRP Instances/Uchoa/X-n101-k25.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n251-k28.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n336-k84.evrp'
 # ScenarioFileName = './VRP Instances/Uchoa/X-n502-k39.evrp'
-ScenarioFileName = './VRP Instances/Uchoa/X-n1001-k43.evrp'
+# ScenarioFileName = './VRP Instances/Uchoa/X-n1001-k43.evrp'
 # ScenarioFileName = './VRP Instances/Leuven1.evrp'
 # Number of Nodes (Rnadomized Scenario):
 N = 40
