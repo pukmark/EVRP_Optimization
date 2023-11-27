@@ -141,7 +141,7 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
                 BestPlan.Cost = Cur_Cost
                 BestPlan.NodesTrajectory = Cur_NodesTrajectory
                 BestPlan.ChargingStationsData = Cur_ChargingStationsData
-                print('New Best Plan Found: ', [NominalPlan.NodesRealNames[i] for i in BestPlan.NodesTrajectory], BestPlan.Cost)
+                # print('New Best Plan Found: ', [NominalPlan.NodesRealNames[i] for i in BestPlan.NodesTrajectory], BestPlan.Cost)
                 BestPlan.TimeStarted = time.process_time()
                 TimeLastSolutionFound.value = time.process_time()
                 SharedBestCost.value = BestPlan.Cost
@@ -170,7 +170,7 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
             BestPlan.Cost = Cur_Cost
             BestPlan.NodesTrajectory = Cur_NodesTrajectory
             BestPlan.ChargingStationsData = Cur_ChargingStationsData
-            print('New Best Plan Found: ', [NominalPlan.NodesRealNames[i] for i in BestPlan.NodesTrajectory], BestPlan.Cost)
+            # print('New Best Plan Found: ', [NominalPlan.NodesRealNames[i] for i in BestPlan.NodesTrajectory], BestPlan.Cost)
             TimeLastSolutionFound.value = time.process_time()
             SharedBestCost.value = BestPlan.Cost
             BestPlan.TimeStarted = time.process_time()
