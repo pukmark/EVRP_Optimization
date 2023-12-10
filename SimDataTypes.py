@@ -38,6 +38,11 @@ class NominalPlanning():
         self.NodesPriorities = np.zeros((N,1))
         self.NodesRealNames = np.zeros((N,1))
         self.LoadDemand = np.zeros((N,), dtype=int)
+        self.ChargingStations = []
+        self.NumberOfChargingStations = 0
+        self.ChargingProfile = []
+        self.ChargingRateProfile = []
+        self.LoadCapacity = 0
 
 class ChargingStations():
     def __init__(self, ChargingStationsNodes):

@@ -81,7 +81,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     LargeLoad = 2*PltParams.LoadCapacity
     model.addConstrs(Load[i] == PltParams.LoadCapacity for i in range(NominalPlan.NumberOfDepots)) # Load at Depot is full load
     model.addConstrs(Load[i] >= 0 for i in range(NominalPlan.N)) # Load at Nodes is non negative
-    model.addConstrs(Load[i]-NominalPlan.LoadDemand[j] >= Load[j]+LargeLoad*(DecisionVar[i,j]-1) for i in range(n) for j in range(NominalPlan.NumberOfDepots,n) if i!=j)
+    model.addConstrs(Load[i]-NominalPlan.LoadDemand[j] >= Load[j]+LargeLoad*(DecisionVar[i,j]-1) for i in range(n) for j in range(NominalPlan.NumberOfDepots,n) if (i!=j and j not in NominalPlan.ChargingStations))
 
     # Dantzig–Fulkerson–Johnson formulation for subtour elimination
     # if (n/(NominalPlan.NumberOfCars+1))<13:
@@ -179,7 +179,10 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
 
     # # Transforming the solution to a path
-    X_sol = np.argwhere(np.round(DecisionVar.X)==1)
+    try:
+        X_sol = np.argwhere(np.round(DecisionVar.X)==1)
+    except:
+        return 0, np.inf, 0, 0, 0
     M = np.sum(NominalPlan.NumberOfCars)
     NodesTrajectory = np.zeros((n+1, M), dtype=int)
 

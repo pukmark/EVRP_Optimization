@@ -15,105 +15,74 @@ os.system('cls' if os.name == 'nt' else 'clear')
 
 np.random.seed(20)
 
-def LoadScenarioFile(ScenarioFileName: str, NominalPlan: SimDataTypes.NominalPlanning, PltParams: SimDataTypes.PlatformParams):
-    # Load Scenario File:
-    NominalPlan.NumberOfChargeStations = 0
-    PltParams.BatteryCapacity = 100.0
-    EnergyConsumption = 0.0
-    f = open(ScenarioFileName, "r")
-    for x in f:
-        if x[0:9] == 'VEHICLES:':
-            NominalPlan.NumberOfCars = int(x[9:])
-            NominalPlan.CarsInDepots = np.zeros((NominalPlan.NumberOfCars,), dtype=int).tolist()
-        if x[0:14] == 'OPTIMAL_VALUE:':
-            OptVal = float(x[14:])
-        if x[0:10] == 'DIMENSION:':
-            NCustemers = int(x[10:])
-        if x[0:9] == 'STATIONS:':
-            NominalPlan.NumberOfChargeStations = int(x[10:])
-        if x[0:9] == 'CAPACITY:':
-            PltParams.LoadCapacity = float(x[10:])        
-        if x[0:16] == 'ENERGY_CAPACITY:':
-            PltParams.BatteryCapacity = float(x[16:])  
-        if x[0:19] == 'ENERGY_CONSUMPTION:':
-            EnergyConsumption = float(x[19:])  
-        if x[0:18] == 'NODE_COORD_SECTION':
-            NominalPlan.N = NCustemers + NominalPlan.NumberOfChargeStations
-            NominalPlan.NodesPosition = np.zeros((NominalPlan.N,2))
-            for i in range(NominalPlan.N):
-                x = f.readline()
-                x = x.split()
-                NominalPlan.NodesPosition[int(x[0])-1,0] = float(x[1])
-                NominalPlan.NodesPosition[int(x[0])-1,1] = float(x[2])
-        if x[0:14] == 'DEMAND_SECTION':
-            NominalPlan.LoadDemand = np.zeros((NominalPlan.N,))
-            for i in range(NCustemers):
-                x = f.readline()
-                x = x.split()
-                NominalPlan.LoadDemand[int(x[0])-1,] = float(x[1])
-        if x[0:22] == 'STATIONS_COORD_SECTION':
-            NominalPlan.ChargingStations = np.zeros((NominalPlan.NumberOfChargeStations,1), dtype=int).tolist()
-            for i in range(NominalPlan.NumberOfChargeStations):
-                x = f.readline()
-                x = x.split()
-                NominalPlan.ChargingStations[i] = int(x[0])-1
-
-    NominalPlan.NodesTimeOfTravel = np.zeros((NominalPlan.N,NominalPlan.N))
-    NominalPlan.NodesEnergyTravel = np.zeros((NominalPlan.N,NominalPlan.N))
-    NominalPlan.NodesEnergyTravelSigma = np.zeros((NominalPlan.N,NominalPlan.N))
-    NominalPlan.TravelSigma = np.zeros((NominalPlan.N,NominalPlan.N))
-    for i in range(NominalPlan.N):
-        for j in range(i,NominalPlan.N):
-            if i==j: continue
-            NominalPlan.NodesTimeOfTravel[i,j] = np.linalg.norm(NominalPlan.NodesPosition[i,:]-NominalPlan.NodesPosition[j,:])
-            NominalPlan.NodesTimeOfTravel[j,i] = NominalPlan.NodesTimeOfTravel[i,j]
-            NominalPlan.NodesEnergyTravel[i,j] = -NominalPlan.NodesTimeOfTravel[i,j] * EnergyConsumption
-            NominalPlan.NodesEnergyTravel[j,i] = NominalPlan.NodesEnergyTravel[i,j]
-            NominalPlan.NodesEnergyTravelSigma[i,j] = 0
-            NominalPlan.NodesEnergyTravelSigma[j,i] = NominalPlan.NodesEnergyTravelSigma[i,j]
-            NominalPlan.TravelSigma[i,j] = 0
-            NominalPlan.TravelSigma[j,i] = NominalPlan.TravelSigma[i,j]
-
-    NominalPlan.NumberOfDepots = 1
-    NominalPlan.StationRechargePower = 1.0e5
-    NominalPlan.NodesVelocity = np.ones((NominalPlan.N,NominalPlan.N))
-    NominalPlan.NodesDistance = NominalPlan.NodesTimeOfTravel
-    NominalPlan.NodesTaskTime = np.zeros((NominalPlan.N,1))
-    NominalPlan.NodesTaskPower = np.zeros((NominalPlan.N,1))
-    NominalPlan.NodesPriorities = np.zeros((NominalPlan.N,1))
-
-
-    return NominalPlan, PltParams, OptVal
-
 
 # Define Platform Parameters:
 PltParams = DataTypes.PlatformParams()
 # Define Simulation Parameters:
 #############################$
 ScenarioFileNames = []
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n22-k4.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n23-k3.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n30-k3.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n33-k4.evrp')
-ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n51-k5.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n76-k7.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/E-n101-k8.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/X-n143-k7.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/X-n214-k11.evrp')
-# ScenarioFileNames.append('./VRP Instances/evrp-benchmark-set/X-n351-k40.evrp')
-# ScenarioFileNames.append('./VRP Instances/Uchoa/X-n101-k25.evrp')
-# ScenarioFileNames.append('./VRP Instances/Uchoa/X-n251-k28.evrp')
-# ScenarioFileNames.append('./VRP Instances/Uchoa/X-n336-k84.evrp')
-# ScenarioFileNames.append('./VRP Instances/Uchoa/X-n502-k39.evrp')
-# ScenarioFileNames.append('./VRP Instances/Uchoa/X-n1001-k43.evrp')
-# ScenarioFileNames.append('./VRP Instances/Leuven1.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n37-k4-s4.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n1006-k43-s5.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n60-k5-s9.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n89-k7-s13.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n112-k8-s11.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/F-n80-k4-s8.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/F-n140-k5-s5.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/M-n110-k10-s9.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/M-n126-k7-s5.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/M-n163-k12-s12.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/M-n212-k16-s12.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n147-k7-s4.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n221-k11-s7.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n360-k40-s9.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n469-k26-s10.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n577-k30-s4.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n698-k75-s13.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n830-k171-s11.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n920-k207-s4.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/X-n759-k98-s10.evrp')
+
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n29-k4-s7.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_insVRP Instancestances/E-n30-k3-s7.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/E-n35-k3-s5.evrp')
+# ScenarioFileNames.append('/home/pmark/Desktop/ResearchMPC/Energy/Trajectory Simulation/VRP_Instances/ecvrp_benchmark_instances/F-n49-k4-s4.evrp')
+
+
+
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n22-k4.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n23-k3.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n30-k3.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n33-k4.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n51-k5.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n76-k7.evrp')
+ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n101-k8.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n143-k7.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n214-k11.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n351-k40.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n459-k26.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n573-k30.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n685-k75.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n749-k98.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n819-k171.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n916-k207.evrp')
+# ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/X-n1001-k43.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Uchoa/X-n101-k25.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Uchoa/X-n251-k28.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Uchoa/X-n336-k84.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Uchoa/X-n502-k39.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Uchoa/X-n1001-k43.evrp')
+# ScenarioFileNames.append('./VRP_Instances/Leuven1.evrp')
+# ScenarioFileNames.append('./VRP_Instances/montoya-et-al-2017/tc1c10s3ct4.xml')
+# ScenarioFileNames.append('./VRP_Instances/montoya-et-al-2017/tc1c80s12cf2.xml')
 # Number of Nodes (Rnadomized Scenario):
+iplot = 3 # 0: No Plot, 1: Plot Main Cluster, 2: Plot All Clusters, 3: Plot Connected Tours
+
 N = 40
 CarsInDepots = [0,0] # Number of Cars per depot
 NumberOfCars = len(CarsInDepots)
 NumberOfDepots = len(np.unique(CarsInDepots))
 MaxNumberOfNodesPerCar = int(3.0*(N-NumberOfDepots)/(NumberOfCars)) if NumberOfCars > 1 else N
-MaxNodesToSolver = 100
+MaxNodesToSolver = 200
 PltParams.BatteryCapacity = 100.0
 PltParams.LoadCapacity = 1000
 SolutionProbabilityTimeReliability = 0.9
@@ -126,10 +95,9 @@ MustVisitAllNodes = True
 CostFunctionType = 1 # 1: Min Sum of Time Travelled, 2: ,Min Max Time Travelled by any car
 MaxTotalTimePerVehicle  = 200.0
 PltParams.RechargeModel = 'ConstantRate' # 'ExponentialRate' or 'ConstantRate'
-SolverType = 'Gurobi' # 'Gurobi' or 'Recursive' or 'Gurobi_NoClustering'
+SolverType = 'Recursive' # 'Gurobi' or 'Recursive' or 'Gurobi_NoClustering'
 ClusteringMethod = "Max_Eigenvalue" # "Max_Eigenvalue" or "Frobenius" or "Sum_AbsEigenvalue" or "Mean_MaxRow" or "PartialMax_Eigenvalue" or "Greedy_Method"
 MaxCalcTimeFromUpdate = 30.0 # Max time to calculate the solution from the last update [sec]
-iplot = 0 # 0: No Plot, 1: Plot Main Cluster, 2: Plot All Clusters, 3: Plot Connected Tours
 ##############################$
 # If MustVisitAllNodes is True, then the mission time is set to a large number
 if MustVisitAllNodes == True:
@@ -215,8 +183,19 @@ for ScenarioFileName in ScenarioFileNames:
 
     # Divide the nodes to groups (Clustering) - for charging stations position:
     if len(ScenarioFileNames) == 0:
-        NodesGroups = DivideNodesToGroups(NominalPlan, ClusteringMethod, MustIncludeNodeZero=True, isplot=0)
-
+        while True:
+            NodesGroups = DivideNodesToGroups(NominalPlan, ClusteringMethod, MustIncludeNodeZero=True, isplot=0)
+            if len(NodesGroups) == 0:
+                print('Can"t find initial solution for this problem. Adding more trucks... ', NumberOfCars+1)
+                # add more trucks:
+                NumberOfCars += 1
+                M = NumberOfCars
+                NominalPlan.NumberOfCars = NumberOfCars
+                CarsInDepots = np.append(CarsInDepots, 0)
+                NominalPlan.CarsInDepots = CarsInDepots
+                continue
+            break
+        
         ## Charging Stations and Load Demand:
         for i in range (M):
             NumGroupChargers = min(2,int(np.ceil(len(NodesGroups[i])/10)))
@@ -239,11 +218,17 @@ for ScenarioFileName in ScenarioFileNames:
         OptVal = -1
 
     else:
-        NominalPlan, PltParams, OptVal = LoadScenarioFile(ScenarioFileName, NominalPlan, PltParams)
+        ScenarioName = ScenarioFileName.split('/')[-1].split('.')
+        if ScenarioName[-1] == 'evrp':
+            NominalPlan, PltParams, OptVal = LoadScenarioFileEvrp(ScenarioFileName, NominalPlan, PltParams)
+        elif ScenarioName[-1] == 'xml':
+            NominalPlan, PltParams, OptVal = LoadScenarioFileXml(ScenarioFileName, NominalPlan, PltParams)
+            NominalPlan.NumberOfCars = NumberOfCars
         Xmin, Xmax = np.min(NominalPlan.NodesPosition[:,0])-10, np.max(NominalPlan.NodesPosition[:,0])+10
         Ymin, Ymax = np.min(NominalPlan.NodesPosition[:,1])-10, np.max(NominalPlan.NodesPosition[:,1])+10
         N = NominalPlan.N
         M = NominalPlan.NumberOfCars
+        NumberOfCars = M
         NominalPlan.InitialChargeStage = PltParams.BatteryCapacity
         MaxNumberOfNodesPerCar = N
         NominalPlan.MaxNumberOfNodesPerCar = MaxNumberOfNodesPerCar
@@ -256,7 +241,7 @@ for ScenarioFileName in ScenarioFileNames:
         print('Load Demand is too high - Lower Demand, Increase Load Capacity or Increase Number of Cars')
         exit()
 
-    t = time.process_time()
+    t = time.time()
     NodesTrajectory = np.zeros((N+1,M), dtype=int)
     EnergyEnteringNodes = np.zeros((N,))
     ChargingTime = np.zeros((N+1,M))
@@ -273,27 +258,45 @@ for ScenarioFileName in ScenarioFileNames:
             NodesGroups.append(np.unique(NodesTrajectory[:,i]).tolist())
     else:
         # Divide the nodes to groups (Clustering)
-        NodesGroups = DivideNodesToGroups(NominalPlan, ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, MustIncludeNodeZero=True, LoadCapacity=PltParams.LoadCapacity, isplot=iplot>=1)
-        
+        while True:
+            NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, MustIncludeNodeZero=True, isplot=iplot>=1)
+            if len(NodesGroups) == 0:
+                print('Can"t find initial solution for this problem. Adding more trucks... ', NumberOfCars+1)
+                # add more trucks:
+                NumberOfCars += 1
+                M = NumberOfCars
+                NominalPlan.NumberOfCars = NumberOfCars
+                NominalPlan.CarsInDepots = np.append(NominalPlan.CarsInDepots, 0)
+                continue
+            break
+        NodesTrajectory = np.zeros((N+1,M), dtype=int)
+        EnergyEnteringNodes = np.zeros((N,))
+        ChargingTime = np.zeros((N+1,M))
+        EnergyExitingNodes = np.zeros((N,))
+
         for Ncar in range(M):
             NominalPlanGroup = CreateSubPlanFromPlan(NominalPlan, NodesGroups[Ncar])
             if iplot>=3:
                 PlotCluster(NominalPlan, [NodesGroups[Ncar]], LoadCapacity=PltParams.LoadCapacity)
             NodesTrajectoryGroup = []
 
+
+            NominalPlanGroup.NumberOfCars = 10
+            NominalPlanGroup.CarsInDepots = np.zeros((NominalPlanGroup.NumberOfCars,), dtype=int)
+            NodesGroupsG = DivideNodesToGroups(deepcopy(NominalPlanGroup), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, MustIncludeNodeZero=False, isplot=iplot>=1)
+
+
             if NominalPlanGroup.N > MaxNodesToSolver:
                 NodesSubGroups = []
                 NumSubGroups = int(np.ceil(NominalPlanGroup.N/MaxNodesToSolver))
                 NodesSubGroups_unindexed = DivideNodesToGroups(NominalPlanGroup,
-                                                            NumSubGroups,
                                                             ClusteringMethod,
                                                             MaximizeGroupSize=True,
                                                             MustIncludeNodeZero=False,
-                                                            ChargingStations=NominalPlanGroup.ChargingStations,
                                                             MaxGroupSize = MaxNodesToSolver,
                                                             isplot=iplot>=2)
                 for iSubGroup in range(NumSubGroups):
-                    NodesSubGroups.append(NodesGroups[Ncar][list(NodesSubGroups_unindexed[iSubGroup])])
+                    NodesSubGroups.append([NodesGroups[Ncar][i] for i in NodesSubGroups_unindexed[iSubGroup]])
             else:
                 NodesSubGroups = []
                 NodesSubGroups.append(NodesGroups[Ncar])
@@ -308,13 +311,20 @@ for ScenarioFileName in ScenarioFileNames:
                     NominalSubPlanGroup = NominalPlanGroup
                 
                 print("Starting Calculation for Car {}, With {} Custemers and {} CS:".format(Ncar, NominalSubPlanGroup.N- NominalSubPlanGroup.NumberOfChargeStations, NominalSubPlanGroup.NumberOfChargeStations))
-                t_i = time.process_time()
+                t_i = time.time()
                 if SolverType == 'Gurobi':
-
-                    NodesTrajectorySubGroup, CostSubGroup, EnergyEnteringNodesGroup, ChargingTimeGroup, EnergyExitingNodesGroup = SolveGurobi_Convex_MinMax(PltParams=PltParams,
-                                                                            NominalPlan= NominalSubPlanGroup,
-                                                                            MaxCalcTimeFromUpdate= MaxCalcTimeFromUpdate,
-                                                                            PowerLeft= PltParams.BatteryCapacity + MaxChargingPotential)
+                    iAddCS = 0
+                    while True:
+                        NodesTrajectorySubGroup, CostSubGroup, EnergyEnteringNodesGroup, ChargingTimeGroup, EnergyExitingNodesGroup = SolveGurobi_Convex_MinMax(PltParams=PltParams,
+                                                                                NominalPlan= NominalSubPlanGroup,
+                                                                                MaxCalcTimeFromUpdate= MaxCalcTimeFromUpdate,
+                                                                                PowerLeft= PltParams.BatteryCapacity + MaxChargingPotential)
+                        if CostSubGroup == np.inf:
+                            print('No Solution Found. Adding More Charging Station Stops...')
+                            NominalSubPlanGroup = AddChargingStations(NominalSubPlanGroup, iAddCS)
+                            iAddCS += 1
+                        else:
+                            break
                     
                     NodesTrajectorySubGroup = NodesTrajectorySubGroup.T[0].tolist()
                     ChargingStationsDataSubGroup = DataTypes.ChargingStations(NominalSubPlanGroup.ChargingStations)
@@ -325,6 +335,23 @@ for ScenarioFileName in ScenarioFileNames:
                         ChargingStationsDataSubGroup.ChargingTime[i] = ChargingTimeGroup[NominalSubPlanGroup.ChargingStations[i]]
                     MaxChargingPotential = ChargingStationsDataSubGroup.MaxChargingPotential
                 else:
+
+                    minDistToDepot = np.min(NominalSubPlanGroup.NodesTimeOfTravel[0,1:])
+                    maxDsidtBetweenNodes = np.max(NominalSubPlanGroup.NodesTimeOfTravel[1:,1:])
+                    InitTraj = []
+                    NextNode = 0
+                    TourTime = 0.0
+                    TourTimeUncertainty = 0.0
+                    EnergyLeft = PltParams.BatteryCapacity
+                    EnergyLeftUncertainty = 0.0
+                    if minDistToDepot > maxDsidtBetweenNodes:
+                        InitTraj = [0]
+                        NextNode = np.argmin(NominalSubPlanGroup.NodesTimeOfTravel[0,1:])+1
+                        TourTime = NominalSubPlanGroup.NodesTimeOfTravel[0,NextNode]
+                        TourTimeUncertainty = NominalSubPlanGroup.TravelSigma[0,NextNode]
+                        EnergyLeft = PltParams.BatteryCapacity + NominalSubPlanGroup.NodesEnergyTravel[0,NextNode]
+                        EnergyLeftUncertainty = NominalSubPlanGroup.NodesEnergyTravelSigma[0,NextNode]
+
                     for i in range(NominalSubPlanGroup.N):
                         NominalSubPlanGroup.NodesTimeOfTravel[i,i] = 999.0
                         NominalSubPlanGroup.TravelSigma[i,i] = 999.0
@@ -335,30 +362,38 @@ for ScenarioFileName in ScenarioFileNames:
                     
                     if np.sum(NominalSubPlanGroup.LoadDemand)> PltParams.LoadCapacity:
                         print('Load Demand is too high')
-                        break
+                        exit()
                     
                     iAddCS = 0
                     while True:
                         BestPlan, NodesTrajectorySubGroup, CostSubGroup, ChargingStationsDataSubGroup = SolveParallelRecursive_ChargingStations(PltParams=PltParams,
                                                                                 NominalPlan= NominalSubPlanGroup,
-                                                                                i_CurrentNode = 0, 
-                                                                                TourTime = 0.0,
-                                                                                TourTimeUncertainty = 0.0,
-                                                                                EnergyLeft = PltParams.BatteryCapacity + MaxChargingPotential,
-                                                                                EnergyLeftUncertainty = 0.0,
+                                                                                i_CurrentNode = NextNode, 
+                                                                                TourTime = TourTime,
+                                                                                TourTimeUncertainty = TourTimeUncertainty,
+                                                                                EnergyLeft = EnergyLeft + MaxChargingPotential,
+                                                                                EnergyLeftUncertainty = EnergyLeftUncertainty,
                                                                                 ChargingStationsData = DataTypes.ChargingStations(NominalSubPlanGroup.ChargingStations),
-                                                                                NodesTrajectory = [], 
+                                                                                NodesTrajectory = InitTraj, 
                                                                                 BestPlan = DataTypes.BestPlan(NominalSubPlanGroup.N, NominalSubPlanGroup.ChargingStations, time.time()),
                                                                                 MaxCalcTimeFromUpdate = MaxCalcTimeFromUpdate)
                     
                         if BestPlan.Cost == np.inf:
-                            print('No Solution Found. Adding More Charging Station Stops...')
-                            NominalSubPlanGroup = AddChargingStations(NominalSubPlanGroup, iAddCS)
-                            iAddCS += 1
+                            if NextNode in NominalSubPlanGroup.ChargingStations:
+                                InitTraj = []
+                                NextNode = 0
+                                TourTime = 0.0
+                                TourTimeUncertainty = 0.0
+                                EnergyLeft = PltParams.BatteryCapacity
+                                EnergyLeftUncertainty = 0.0
+                            else:
+                                print('No Solution Found. Adding More Charging Station Stops...')
+                                NominalSubPlanGroup = AddChargingStations(NominalSubPlanGroup, iAddCS)
+                                iAddCS += 1
                         else:
                             break
                         
-                print("Calculation Time for Car {} with {} Nodes = ".format(Ncar, NominalSubPlanGroup.N), time.process_time()-t_i)
+                print("Calculation Time for Car {} with {} Nodes = ".format(Ncar, NominalSubPlanGroup.N), time.time()-t_i)
                 MaxChargingPotential = ChargingStationsDataSubGroup.MaxChargingPotential
                 if NumSubGroups <= 1 or iSubGroup == 0:
                     NodesTrajectoryGroup = []
@@ -394,7 +429,7 @@ for ScenarioFileName in ScenarioFileNames:
         
     # Calculate the Trajectory Time and Energy:
     NumberOfCars = NodesTrajectory.shape[1]
-    print(SolverType+' Calculation Time = ', time.process_time()-t)
+    print(SolverType+' Calculation Time = ', time.time()-t)
     TimeVec = np.zeros((N+1,NumberOfCars))
     Energy =np.zeros((N+1,NumberOfCars)); Energy[0,:] = PltParams.BatteryCapacity
     EnergySigma2 =np.zeros((N+1,NumberOfCars)); EnergySigma2[0,:] = 0
@@ -429,11 +464,20 @@ for ScenarioFileName in ScenarioFileNames:
         TimeSigma = TimeSigma[:-1,:]
         UncertainEnergy = UncertainEnergy[:-1,:]
         UncertainTime = UncertainTime[:-1,:]
+    
+    Customers = set(range(NominalPlan.NumberOfDepots,N)) - set(NominalPlan.ChargingStations)
+    for m in range(NumberOfCars):
+        Customers = Customers - set(NodesTrajectory[:,m].tolist())
+
+    if len(Customers) > 0:
+        print('Not all customers were visited: ', Customers)
+        exit()
+
 
     print(SolverType+' Trajectory Time = ', np.sum(np.max(TimeVec+NominalPlan.TimeAlpha*TimeSigma, axis=0)))
     for i in range(NumberOfCars):
         iDepot = np.argwhere(NodesTrajectory[:,i] < NominalPlan.NumberOfDepots)[1]
-        print('Car ', i, ' Trajectory: ', NodesTrajectory[:,i].T, 'Remaining Load: ', RemainingLoad[iDepot[0],i], ', Min Energy Along Traj: ',"{:.2f}".format(np.min(UncertainEnergy[:,i])))
+        print('Car ', i, ' Trajectory: ', NodesTrajectory[:,i].T,' Cost: {:4.2f}'.format(TimeVec[iDepot[0],i]), ', Remaining Load: ', RemainingLoad[iDepot[0],i], ', Min Energy Along Traj: ',"{:.2f}".format(np.min(UncertainEnergy[:,i])))
 
     SolGap = 0
     if OptVal > 0:
@@ -441,7 +485,7 @@ for ScenarioFileName in ScenarioFileNames:
         print('Solution Gap [%]= {:4.2f}'.format(SolGap))
 
 
-    if len(ScenarioFileName) == 0:
+    if len(ScenarioFileName) >= 0:
         ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
         path = os.path.join("Results", ScenarioName) 
         os.makedirs(path, exist_ok=True)
@@ -548,7 +592,7 @@ for ScenarioFileName in ScenarioFileNames:
 
     with open("Results//"+ScenarioName+"//"+FileName+'.txt', 'w') as f:
         f.write('Solver Type: '+SolverType+'\n')
-        f.write('Solving Time: '+str(time.process_time()-t)+'\n')
+        f.write('Solving Time: '+str(time.time()-t)+'\n')
         f.write('N: '+str(NominalPlan.N)+'\n')
         f.write('Cars: '+str(NominalPlan.NumberOfCars)+'\n')
         f.write('Clustering Method: '+str(ClusteringMethod)+'\n')
@@ -557,7 +601,7 @@ for ScenarioFileName in ScenarioFileNames:
         f.write('Solution Gap: '+str(SolGap)+'\n')
         f.write('Charging Stations: '+str(NominalPlan.ChargingStations)+'\n')
         for m in range(NominalPlan.NumberOfCars):
-            f.write('Car '+str(m+1)+' Trajectory Node: '+str(NodesTrajectory[:,m].T))
+            f.write('Car '+str(m+1)+', Cost = {:4.2f}'.format(np.max(TimeVec[:,m]))+' Trajectory Node: '+str(NodesTrajectory[:,m].T))
             f.write('\n')
         for m in range(NominalPlan.NumberOfCars):
             f.write('Car '+str(m+1)+' Time: '+str(TimeVec[:,m].T))
