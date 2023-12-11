@@ -259,7 +259,7 @@ for ScenarioFileName in ScenarioFileNames:
     else:
         # Divide the nodes to groups (Clustering)
         while True:
-            NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, MustIncludeNodeZero=True, isplot=iplot>=1)
+            NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, ClusterSubGroups=False, isplot=iplot>=1)
             if len(NodesGroups) == 0:
                 print('Can"t find initial solution for this problem. Adding more trucks... ', NumberOfCars+1)
                 # add more trucks:
@@ -280,19 +280,17 @@ for ScenarioFileName in ScenarioFileNames:
                 PlotCluster(NominalPlan, [NodesGroups[Ncar]], LoadCapacity=PltParams.LoadCapacity)
             NodesTrajectoryGroup = []
 
-
+            # Divide the nodes to sub-groups (Clustering)
             NominalPlanGroup.NumberOfCars = 10
             NominalPlanGroup.CarsInDepots = np.zeros((NominalPlanGroup.NumberOfCars,), dtype=int)
-            NodesGroupsG = DivideNodesToGroups(deepcopy(NominalPlanGroup), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, MustIncludeNodeZero=False, isplot=iplot>=1)
-
+            NodesGroupsG = DivideNodesToGroups(deepcopy(NominalPlanGroup), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, ClusterSubGroups=True, isplot=iplot>=1)
 
             if NominalPlanGroup.N > MaxNodesToSolver:
                 NodesSubGroups = []
                 NumSubGroups = int(np.ceil(NominalPlanGroup.N/MaxNodesToSolver))
                 NodesSubGroups_unindexed = DivideNodesToGroups(NominalPlanGroup,
                                                             ClusteringMethod,
-                                                            MaximizeGroupSize=True,
-                                                            MustIncludeNodeZero=False,
+                                                            ClusterSubGroups=True,
                                                             MaxGroupSize = MaxNodesToSolver,
                                                             isplot=iplot>=2)
                 for iSubGroup in range(NumSubGroups):
