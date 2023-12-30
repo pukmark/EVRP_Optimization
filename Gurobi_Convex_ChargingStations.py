@@ -9,8 +9,7 @@ import math
 
 def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams, 
                               NominalPlan: SimDataTypes.NominalPlanning, 
-                              MaxCalcTimeFromUpdate: float = 3600, 
-                              PowerLeft: float = 100.0):
+                              MaxCalcTimeFromUpdate: float = 3600):
     n = NominalPlan.N
     model = gp.Model("ChargingStations_MinMax")
 
@@ -42,7 +41,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
             model.setObjective(y.sum() + TimeAlpha*SumSigmaTf + gp.quicksum(DecisionVar[i,j]*NominalPlan.NodesTimeOfTravel[i,j]  for i in range(n) for j in range(n) if i!=j), GRB.MINIMIZE)
             SumSigmaTf2 = model.addVar(name="SigmaTf2")
             model.addConstr(SumSigmaTf2 == SumSigmaTf*SumSigmaTf)
-            model.addConstr(SumSigmaTf2 == sum(DecisionVar[i,j]*NominalPlan.TravelSigma[i,j]**2 for i in range(n) for j in range(n) if i!=j))
+            model.addConstr(SumSigmaTf2 == sum(DecisionVar[i,j]*NominalPlan.TravelSigma2[i,j] for i in range(n) for j in range(n) if i!=j))
         elif NominalPlan.CostFunctionType == 2:
             TfSigma_Max = model.addVar(name="TfSigma_Max")
             model.setObjective(TfSigma_Max, GRB.MINIMIZE)
@@ -77,11 +76,11 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
         model.addConstrs(u[i] >= StartU - LargeU*(1-DecisionVar[i,j]) for i in range(NominalPlan.NumberOfDepots,n))
         model.addConstrs(u[i] <= EndU   + LargeU*(1-DecisionVar[i,j]) for i in range(NominalPlan.NumberOfDepots,n))
 
-    Load = model.addMVar(n, name="u") # Load[i] is the Remainded Load of node i in the path
-    LargeLoad = 2*PltParams.LoadCapacity
+    Load = model.addMVar(n, name="Load") # Load[i] is the Remainded Load of node i in the path
+    LargeLoad = 3.0*PltParams.LoadCapacity
     model.addConstrs(Load[i] == PltParams.LoadCapacity for i in range(NominalPlan.NumberOfDepots)) # Load at Depot is full load
-    model.addConstrs(Load[i] >= 0 for i in range(NominalPlan.N)) # Load at Nodes is non negative
-    model.addConstrs(Load[i]-NominalPlan.LoadDemand[j] >= Load[j]+LargeLoad*(DecisionVar[i,j]-1) for i in range(n) for j in range(NominalPlan.NumberOfDepots,n) if (i!=j and j not in NominalPlan.ChargingStations))
+    model.addConstrs(Load[i] >= 0 for i in range(NominalPlan.NumberOfDepots,n)) # Load at Nodes is non negative
+    model.addConstrs(Load[i]-NominalPlan.LoadDemand[j] >= Load[j]+LargeLoad*(DecisionVar[i,j]-1) for i in range(n) for j in range(NominalPlan.NumberOfDepots,n) if i!=j)
 
     # Dantzig–Fulkerson–Johnson formulation for subtour elimination
     # if (n/(NominalPlan.NumberOfCars+1))<13:
@@ -112,20 +111,24 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
             model.addConstr(y[i]==0.0) # Not a charging station, no charging time
             model.addConstr(e[i]==ef[i])
 
-    model.addConstrs(e[j] == PowerLeft for j in range(NominalPlan.NumberOfDepots)) # Initial energy
+    model.addConstrs(e[j] == PltParams.BatteryCapacity for j in range(NominalPlan.NumberOfDepots)) # Initial energy
     model.addConstrs(e[i] >= PltParams.MinimalSOC+EnergyAlpha*eSigma[i] for i in range(NominalPlan.NumberOfDepots,n)) # Energy is always positive
+
+    if np.max(NominalPlan.NodesEnergyTravelSigma) == 0:
+        model.addConstrs(eSigma[i] == 0.0 for i in range(n))
+        model.addConstrs(eSigmaF[i] == 0.0 for i in range(n))
 
     # # Energy uncertainty constraints
     eSigmaMax = n*np.max(NominalPlan.NodesEnergyTravelSigma)**2
-    model.addConstrs(eSigma2[i] == 0.0 for i in range(NominalPlan.NumberOfDepots))
+    model.addConstrs(eSigma[i] == 0.0 for i in range(NominalPlan.NumberOfDepots))
     for i in range(0, n):
         model.addConstr(eSigma2[i] == eSigma[i]*eSigma[i])
         model.addConstr(eSigmaF2[i] == eSigmaF[i]*eSigmaF[i])
-        model.addConstrs(eSigmaF2[i] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma[i,j]**2 for j in range(NominalPlan.NumberOfDepots) if i != j)
+        model.addConstrs(eSigmaF2[i] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma2[i,j] for j in range(NominalPlan.NumberOfDepots) if i != j)
         for j in range(NominalPlan.NumberOfDepots, n):
             if i != j:
                 # Energy Sumation over edges (with charging), if edges are not connected, then the energy is not affected
-                model.addConstr( eSigma2[j] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma[i,j]**2 )
+                model.addConstr( eSigma2[j] + (1-DecisionVar[i,j])*eSigmaMax >= eSigma2[i] + NominalPlan.NodesEnergyTravelSigma2[i,j] )
                 model.addConstr( e[j] + (DecisionVar[i,j]-1)*PltParams.BatteryCapacity*3.0 <= ef[i] + NominalPlan.NodesEnergyTravel[i,j] ) # Energy Sumation over edges
     
     # Add the energy constraints for the return to base case
@@ -162,6 +165,11 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
         SigmaT = model.addMVar(n, name="SigmaT")
         model.addConstrs(SigmaT2[i] <= SigmaT[i]*SigmaT[i] for i in range(0, n))
         model.addConstrs((MeanT[i]+TimeAlpha*SigmaT[i] <= NominalPlan.MaxTotalTimePerVehicle for i in range(n)))
+        if np.max(NominalPlan.TravelSigma) == 0:
+            model.addConstrs(SigmaT[i] == 0.0 for i in range(n))
+
+    if np.max(NominalPlan.TravelSigma) == 0:
+        model.addConstrs(SigmaTf[i] == 0.0 for i in range(n))
 
     model._cur_obj = float('inf')
     model._time = time.time()
@@ -174,7 +182,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     # model.setParam("MIPGap", 0.01)
     model.setParam("NonConvex", 2)
     model.setParam("MIPFocus", 1)
-    model.setParam("DisplayInterval", 5)
+    model.setParam("DisplayInterval", 30)
     model.optimize(callback=cb)
 
 
@@ -212,5 +220,5 @@ def cb(model, where):
     # Terminate if objective has not improved in 300s
     if (time.time() - model._time > model._MaxCalcTime) and model._cur_obj< 1.0e8:
         model.terminate()
-    elif (time.time() - model._time > model._MaxCalcTime*10.0):
+    elif (time.time() - model._time > model._MaxCalcTime*10000.0):
         model.terminate()

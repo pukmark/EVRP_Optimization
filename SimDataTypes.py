@@ -43,6 +43,7 @@ class NominalPlanning():
         self.ChargingProfile = []
         self.ChargingRateProfile = []
         self.LoadCapacity = 0
+        self.BatteryCapacity = 0
 
 class ChargingStations():
     def __init__(self, ChargingStationsNodes):

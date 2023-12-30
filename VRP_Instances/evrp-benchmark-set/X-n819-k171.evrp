@@ -2,7 +2,7 @@ Name: Mavrovouniotis Menelaou Instances Test: 1
 COMMENT: Modificatification of X-n819-k171	 instance. Modified by Mavrovouniotis Menelaou.
 TYPE: EVRP 
 OPTIMAL_VALUE: 164289.95
-VEHICLES: 171 
+VEHICLES: 181 
 DIMENSION: 819 
 STATIONS: 25 
 CAPACITY: 358 

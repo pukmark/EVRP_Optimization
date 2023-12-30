@@ -7,6 +7,26 @@ from multiprocessing import Pool, Lock, Value
 import itertools
 import xmltodict as xml
 
+
+def normalize(x):
+    fac = np.linalg.norm(x)
+    x_n = x / fac
+    return fac, x_n
+
+def CalcLargestEigenvalue(A):
+    if A.shape[0] == 1:
+        return A[0][0]
+    v = np.ones((A.shape[0],1))/np.sqrt(A.shape[0])
+    v = A@v
+    lam_pre, v = normalize(v)
+    while True:
+        v = A@v
+        lam, v = normalize(v)
+        if abs((lam-lam_pre)/lam_pre) < 1e-3:
+            return abs(lam)
+        lam_pre = lam
+
+
 def CalcTotalEntropy(Entropy_i: list):
     return np.linalg.norm(Entropy_i, ord=1)
 
@@ -22,27 +42,28 @@ def CalcEntropy(NodesGroups, NodesTimeOfTravel, Method, GroupsChanged: list = []
         GroupsChanged = range(len(NodesGroups))
     if len(Entropy_i) == 0:
         Entropy_i = np.zeros(len(NodesGroups))
-    if Method == "Max_Eigenvalue":
+    if Method == "Max_EigenvalueN":
         for iGroup in GroupsChanged:
-            if len(NodesGroups[iGroup]) <= 1:
+            if len(NodesGroups[iGroup]) == 0:
+                Entropy_i[iGroup] = 1e8
+                continue
+            if len(NodesGroups[iGroup]) == 1:
                 Entropy_i[iGroup] = 0.0
                 continue
-            w,_ = np.linalg.eig(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
-            Entropy_i[iGroup] = np.max(np.abs(w)) *len(w)
-            # Entropy_i[iGroup] = 0.5*(np.max(np.abs(w1))+np.max(np.abs(w))) *len(w)
+            w = CalcLargestEigenvalue(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
+            Entropy_i[iGroup] = w * len(NodesGroups[iGroup])
     elif Method == "Frobenius":
         for iGroup in GroupsChanged:
             GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
             Entropy_i[iGroup] = np.linalg.norm(GroupTimeMatrix, 'fro')
     elif Method == "Mean_MaxRow":
         for iGroup in GroupsChanged:
-            GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
-            Entropy_i[iGroup] = np.sum(np.max(GroupTimeMatrix, axis=1))**2
+            Entropy_i[iGroup] = np.sum(np.max(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]], axis=1))**2
     elif Method == "Sum_AbsEigenvalue":
         for iGroup in GroupsChanged:
-            GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
-            w, v = np.linalg.eig(GroupTimeMatrix)
-            Entropy_i[iGroup] = np.sum(np.abs(w)**2)
+            # GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
+            w, v = np.linalg.eig(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
+            Entropy_i[iGroup] = np.sum(np.abs(w))
     elif Method == "PartialMax_Eigenvalue":
         for iGroup in GroupsChanged:
             GroupTimeMatrix = CreateGroupMatrix(list(set(NodesGroups[iGroup]) - set({0})), NodesTimeOfTravel)
@@ -79,20 +100,18 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     N = NominalPlan.N
     M = NominalPlan.NumberOfCars
     NodesGroups = list()
-    i1 = 0 if ClusterSubGroups==False else 1
-    NodesTimeOfTravel = NominalPlan.NodesTimeOfTravel + NominalPlan.TimeAlpha * NominalPlan.TravelSigma
-    iFirst = True
-    # NominalPlan.LoadDemand = NominalPlan.LoadDemand*0
+    i1 = 0 if ClusterSubGroups==True else 1
+    if len(NominalPlan.ChargingRateProfile) == 0:
+        NodesTimeOfTravel = NominalPlan.NodesTimeOfTravel + NominalPlan.TimeAlpha * NominalPlan.TravelSigma
+    else:
+        NodesTimeOfTravel = NominalPlan.NodesTimeOfTravel + NominalPlan.TimeAlpha * NominalPlan.TravelSigma - (NominalPlan.NodesEnergyTravel - NominalPlan.EnergyAlpha * NominalPlan.NodesEnergyTravelSigma)/NominalPlan.ChargingRateProfile[0][0,-1]
 
     if ClusterSubGroups == True:
-        NodesSet = set(range(N))
+        NodesSet = set(range(N)) - set(NominalPlan.ChargingStations) - set(NominalPlan.CarsInDepots)
         NumSubGroups = int(len(NominalPlan.CarsInDepots))
         M = NumSubGroups
         for iGroup in range(NumSubGroups-1):
             Group = []
-            if iGroup == 0:
-                Group.append(0)
-                NodesSet.remove(0)
             while len(Group) < MaxGroupSize and len(NodesSet)>0:
                 Entropy = np.zeros((len(NodesSet),))
                 for i in range(len(NodesSet)):
@@ -111,17 +130,17 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
 
     else:
     # Initialize the groups by Closest Neighbor:
+        CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
         for i in NominalPlan.CarsInDepots:
             NodesGroups.append(np.array([i]))
-        CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
-        TimeMat = NodesTimeOfTravel[list(CustomersNodes),:][:,list(CustomersNodes)]
-        max_Time_i = np.argmax(np.max(TimeMat, axis=1))
-        NodesGroups[i] = np.append(NodesGroups[i], list(CustomersNodes)[max_Time_i])
-        CustomersNodes = CustomersNodes - set([list(CustomersNodes)[max_Time_i]])
+            TimeMat = NodesTimeOfTravel[list(CustomersNodes),:][:,list(CustomersNodes)]
+            max_Time_i = np.argmax(np.max(TimeMat, axis=1))
+            NodesGroups[-1] = np.append(NodesGroups[-1], list(CustomersNodes)[max_Time_i])
+            CustomersNodes = CustomersNodes - set([list(CustomersNodes)[max_Time_i]])
         for i in range(1,M):
             Dist2 = np.zeros((len(CustomersNodes),))
             for j in range(i):
-                Dist2 += np.sqrt(NodesTimeOfTravel[NodesGroups[j][1],list(CustomersNodes)])
+                Dist2 += np.sqrt(NodesTimeOfTravel[NodesGroups[j][-1],list(CustomersNodes)])
             max_Dist2_i = np.argmax(Dist2)
             NodesGroups[i] = np.append(NodesGroups[i], list(CustomersNodes)[max_Dist2_i])
             CustomersNodes = CustomersNodes - set([list(CustomersNodes)[max_Dist2_i]])
@@ -144,38 +163,44 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                     print("Error: Node {:} can't be added to any group".format(iNode)," Only {:3.2f}[%] nodes assingned".format(100*(NCust-len(CustomersNodes))/NCust))
                     return []
 
-    # Minimize "Entropy"
+    # Load file for initial groups:
     if ClusterSubGroups==False:
-        GroupDemand = np.zeros((M,))
-        CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
-        for i in range(M):
-            GroupDemand[i] = np.sum(NominalPlan.LoadDemand[NodesGroups[i]])
-            CustomersNodes = CustomersNodes - set(NodesGroups[i])
-            if GroupDemand[i] > NominalPlan.LoadCapacity:
-                print("Error: Group {:} has more load than capacity".format(i))
-                return []
-
-        # Load file for initial groups:
         try:
             NodesGroupsGuess = []
             # open file and read the content in a list
+            SumNodes = 0
             with open(r'./Groups.txt', 'r') as fp:
                 for line in fp:
                     x = line[:-1]
                     # add current item to the list
                     x = x.strip('][').split(', ')
                     NodesGroupsGuess.append([int(i) for i in x])
-                if len(NodesGroupsGuess) == len(NodesGroups):
+                    SumNodes += len(NodesGroupsGuess[-1])
+                    if np.sum(NominalPlan.LoadDemand[NodesGroupsGuess[-1]])>NominalPlan.LoadCapacity:
+                        break
+                if (len(NodesGroupsGuess) == len(NodesGroups)) and (SumNodes == N-len(NominalPlan.ChargingStations)+len(NodesGroups)-1):
                     NodesGroups = NodesGroupsGuess.copy()
         except:
-            print("Error: Can't open file 'Groups.xml'")
-        
-        if len(CustomersNodes) > 0:
-            print("Error: Not all nodes are assigned to groups")
+            print("Error: Can't open file 'Groups.txt'")
+    
+    # if ClusterSubGroups==False and len(NominalPlan.ChargingStations)>0:
+    #     NodesGroups = []
+    #     NodesGroups.append([ 0 ,  5,7,4])
+    #     NodesGroups.append([ 1,6,9,10,2])
+
+    # Calculate the demand of each group:
+    GroupDemand = np.zeros((M,))
+    CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
+    for i in range(M):
+        GroupDemand[i] = np.sum(NominalPlan.LoadDemand[NodesGroups[i]])
+        CustomersNodes = CustomersNodes - set(NodesGroups[i])
+        if GroupDemand[i] > NominalPlan.LoadCapacity:
+            print("Error: Group {:} has more load than capacity".format(i))
             return []
-    else:
-        GroupDemand = np.zeros((M,))
-            
+    if len(CustomersNodes) > 0:
+        print("Error: Not all nodes are assigned to groups")
+        return []
+    
 
 
     BestEntropy_i = CalcEntropy(NodesGroups.copy(), NodesTimeOfTravel, Method)
@@ -183,25 +208,25 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     Entropy_prev = BestEntropy
     EntropyChangeCriteria = 0.00
     t0 = time.time()
-    print("Initial Entropy: {:4.3e}".format(BestEntropy),", Number Of Custemers: ", N-len(NominalPlan.ChargingStations)," Number Of CS: ", len(NominalPlan.ChargingStations)," Number Of Cars: ", M)
+    if ClusterSubGroups==False:
+        print("Initial Entropy: {:4.3e}".format(BestEntropy),", Number Of Custemers: ", N-len(NominalPlan.ChargingStations)," Number Of CS: ", len(NominalPlan.ChargingStations)," Number Of Cars: ", M)
     
     # Move nodes between groups:
     GroupChanged_new = np.ones((M,)).astype(bool)
-    for iter in range(1000):
+    for iter in range(100):
         t0_iter = time.time()
-        iter2 = 0
         GroupChanged = GroupChanged_new.copy()
         GroupChanged_new = np.zeros((M,)).astype(bool)
-        while True:
+        if Entropy_prev>0.0:
             BestEntropy_i = CalcEntropy(NodesGroups.copy(), NodesTimeOfTravel, Method)
             BestEntropy = CalcTotalEntropy(BestEntropy_i)
             CurNodesGroups = NodesGroups.copy()
             GroupEntropySort_i = np.argsort(BestEntropy_i)[::-1]
             for iGroup in GroupEntropySort_i:
-                # if len(CurNodesGroups[iGroup]) <= 3: continue
+                if len(CurNodesGroups[iGroup]) <= 2: continue
                 for CurNode in CurNodesGroups[iGroup][i1:]:
                     Entropy = np.ones((M,))*np.inf
-                    if len(CurNodesGroups[iGroup]) <= 3: continue
+                    if len(CurNodesGroups[iGroup]) <= 2: continue
                     for jGroup in range(M):
                         if (iGroup == jGroup):
                             Entropy[jGroup] = BestEntropy
@@ -215,7 +240,6 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                         arg_jGroup = np.argwhere(CurNodesGroups[jGroup]==CurNode)
                         CurNodesGroups[jGroup] = np.delete(CurNodesGroups[jGroup], arg_jGroup)
                         CurNodesGroups[iGroup] = np.append(CurNodesGroups[iGroup], CurNode)
-                        
                     Group_MinEntropy = np.argmin(Entropy)
                     BestEntropy = Entropy[Group_MinEntropy]
                     arg_iGroup = np.argwhere(CurNodesGroups[iGroup]==CurNode)
@@ -229,85 +253,92 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                         GroupChanged_new[iGroup] = True
                         GroupChanged_new[Group_MinEntropy] = True
                 CurNodesGroups[iGroup] = np.sort(CurNodesGroups[iGroup])
-            if time.time()-t0_iter > 0.0 and isplot==True:
-                print("iteration = "+str(iter)+", SubIteration = "+str(iter2)+", Entropy = {:4.3e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.time()-t0_iter)+"[sec]")
-            if (Entropy_prev - BestEntropy)/Entropy_prev <= EntropyChangeCriteria:
-                break
-            iter2 += 1
-            Entropy_prev = BestEntropy
             for i in range(M):
                 GroupChanged[i] = True if (GroupChanged_new[i]==True or GroupChanged[i]==True) else False
                 BestEntropy_i[i] = CalcEntropy([NodesGroups[i]], NodesTimeOfTravel, Method)
-        
+        # if BestEntropy < Entropy_prev:
+        #     Entropy_prev = BestEntropy
+        #     continue
+
         # Switch between groups:
         GroupEntropySort_i = np.argsort(BestEntropy_i)[::-1]
         CurNodesGroups = NodesGroups.copy()
-        for i in range(M):
-            iGroup = GroupEntropySort_i[i]
-            for j in range(i+1,M):
-                jGroup = GroupEntropySort_i[j]
-                if GroupChanged[iGroup]==False and GroupChanged[jGroup]==False:
-                    continue
-                SubNodesGroups = []
-                SubNodesGroups.append(NodesGroups[iGroup])
-                SubNodesGroups.append(NodesGroups[jGroup])
-                CurSubNodesGroups = SubNodesGroups.copy()
-                BestEntropy = CalcTotalEntropy(CalcEntropy(SubNodesGroups, NodesTimeOfTravel, Method))
-                for iNode in SubNodesGroups[0][i1:]:
-                    for jNode in SubNodesGroups[1][i1:]:
-                        if iNode==0 or jNode==0: continue
-                        if jNode in CurSubNodesGroups[0] or iNode in CurSubNodesGroups[1]: 
-                            continue
-                        if GroupDemand[iGroup]-NominalPlan.LoadDemand[iNode]+NominalPlan.LoadDemand[jNode]>NominalPlan.LoadCapacity or GroupDemand[jGroup]-NominalPlan.LoadDemand[jNode]+NominalPlan.LoadDemand[iNode]>NominalPlan.LoadCapacity:
-                            continue
-                        arg_iNode = np.argwhere(CurSubNodesGroups[0]==iNode)
-                        arg_jNode = np.argwhere(CurSubNodesGroups[1]==jNode)
-                        CurSubNodesGroups[0] = np.delete(CurSubNodesGroups[0], arg_iNode)
-                        CurSubNodesGroups[1] = np.delete(CurSubNodesGroups[1], arg_jNode)
-                        CurSubNodesGroups[0] = np.append(CurSubNodesGroups[0], jNode)
-                        CurSubNodesGroups[1] = np.append(CurSubNodesGroups[1], iNode)
-                        CurEntropy = CalcTotalEntropy(CalcEntropy(CurSubNodesGroups, NodesTimeOfTravel, Method))
-                        if CurEntropy >= BestEntropy:
-                            CurSubNodesGroups = SubNodesGroups.copy()
-                        else:
-                            BestEntropy = CurEntropy
-                            for i in range(2):
-                                SubNodesGroups[i] = np.sort(CurSubNodesGroups[i])
-                            NodesGroups[iGroup] = SubNodesGroups[0]
-                            NodesGroups[jGroup] = SubNodesGroups[1]
-                            GroupChanged_new[iGroup] = True
-                            GroupChanged_new[jGroup] = True
-                            GroupDemand[iGroup] -= NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode]
-                            GroupDemand[jGroup] += NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode]
-        BestEntropy = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
-        for i in range(M):
+        if Entropy_prev>0.0:
+            for i in range(M):
+                iGroup = GroupEntropySort_i[i]
+                for j in range(i+1,M):
+                    jGroup = GroupEntropySort_i[j]
+                    if GroupChanged[iGroup]==False or GroupChanged[jGroup]==False:
+                        continue
+                    SubNodesGroups = []
+                    SubNodesGroups.append(NodesGroups[iGroup])
+                    SubNodesGroups.append(NodesGroups[jGroup])
+                    CurSubNodesGroups = SubNodesGroups.copy()
+                    BestEntropy = CalcTotalEntropy(CalcEntropy(SubNodesGroups, NodesTimeOfTravel, Method))
+                    for iNode in SubNodesGroups[0]:
+                        for jNode in SubNodesGroups[1]:
+                            if iNode in NominalPlan.CarsInDepots and jNode not in NominalPlan.CarsInDepots:
+                                continue
+                            if jNode in NominalPlan.CarsInDepots and iNode not in NominalPlan.CarsInDepots:
+                                continue
+                            # if iNode==0 or jNode==0: continue
+                            if jNode in CurSubNodesGroups[0] or iNode in CurSubNodesGroups[1]: 
+                                continue
+                            if GroupDemand[iGroup]-NominalPlan.LoadDemand[iNode]+NominalPlan.LoadDemand[jNode]>NominalPlan.LoadCapacity or GroupDemand[jGroup]-NominalPlan.LoadDemand[jNode]+NominalPlan.LoadDemand[iNode]>NominalPlan.LoadCapacity:
+                                continue
+                            arg_iNode = np.argwhere(CurSubNodesGroups[0]==iNode)
+                            arg_jNode = np.argwhere(CurSubNodesGroups[1]==jNode)
+                            CurSubNodesGroups[0] = np.delete(CurSubNodesGroups[0], arg_iNode)
+                            CurSubNodesGroups[1] = np.delete(CurSubNodesGroups[1], arg_jNode)
+                            CurSubNodesGroups[0] = np.append(CurSubNodesGroups[0], jNode)
+                            CurSubNodesGroups[1] = np.append(CurSubNodesGroups[1], iNode)
+                            CurEntropy = CalcTotalEntropy(CalcEntropy(CurSubNodesGroups, NodesTimeOfTravel, Method))
+                            if CurEntropy >= BestEntropy:
+                                CurSubNodesGroups = SubNodesGroups.copy()
+                            else:
+                                BestEntropy = CurEntropy
+                                for i in range(2):
+                                    SubNodesGroups[i] = np.sort(CurSubNodesGroups[i])
+                                NodesGroups[iGroup] = SubNodesGroups[0]
+                                NodesGroups[jGroup] = SubNodesGroups[1]
+                                GroupChanged_new[iGroup] = True
+                                GroupChanged_new[jGroup] = True
+                                GroupDemand[iGroup] -= NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode]
+                                GroupDemand[jGroup] += NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode]
+            
+            for i in range(M):
                 GroupChanged[i] = True if (GroupChanged_new[i]==True or GroupChanged[i]==True) else False
                 BestEntropy_i[i] = CalcEntropy([NodesGroups[i]], NodesTimeOfTravel, Method)
+            BestEntropy = CalcTotalEntropy(BestEntropy_i)
+
+        # if Entropy_prev > BestEntropy:
+        #     Entropy_prev = BestEntropy
+        #     continue
+        # BestEntropy = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
+
         # Switch between groups 1 to 2:
-        # if ClusterSubGroups==True:
-        #     print("iteration = "+str(iter)+", Entropy = {:4.3e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.process_time()-t0_iter)+"[sec]")
-            # continue
-        
-        # if iFirst == True:
-        # GroupChanged = np.ones((M,)).astype(bool)
-            # iFirst = False
         CurNodesGroups = NodesGroups.copy()
-        Group_i = np.argsort(BestEntropy_i)[::-1][:int(len(GroupEntropySort_i))]
-        Group_j = np.argsort(BestEntropy_i)[:int(len(GroupEntropySort_i))]
+        Group_i = np.argsort(BestEntropy_i)[::-1]
+        Group_j = np.argsort(BestEntropy_i)
         for iGroup in Group_i:
             for jGroup in Group_j:
+                if len(NodesGroups[jGroup]) <= 2: continue
                 if (iGroup == jGroup) or (GroupChanged[iGroup]==False and GroupChanged[jGroup]==False): continue
                 SubNodesGroups = []
                 SubNodesGroups.append(NodesGroups[iGroup])
                 SubNodesGroups.append(NodesGroups[jGroup])
                 CurSubNodesGroups = SubNodesGroups.copy()
                 BestEntropy = CalcTotalEntropy(CalcEntropy(SubNodesGroups, NodesTimeOfTravel, Method))
-                premuts_j = list(itertools.permutations(CurSubNodesGroups[1][i1:],2))
-                for iNode in SubNodesGroups[0][i1:]:
+                premuts_j = list(itertools.combinations(CurSubNodesGroups[1],2))
+                for iNode in SubNodesGroups[0]:
                     for premut in premuts_j:
                             jNode = premut[0]
                             kNode = premut[1]
-                            if iNode==0 or jNode==0 or jNode==kNode: continue
+                            if jNode==kNode: continue
+                            if iNode in NominalPlan.CarsInDepots and (jNode not in NominalPlan.CarsInDepots and kNode not in NominalPlan.CarsInDepots):
+                                continue
+                            if (jNode in NominalPlan.CarsInDepots or kNode in NominalPlan.CarsInDepots) and iNode not in NominalPlan.CarsInDepots:
+                                continue
                             if jNode in CurSubNodesGroups[0] or kNode in CurSubNodesGroups[0] or iNode in CurSubNodesGroups[1]: 
                                 continue
                             if GroupDemand[iGroup]-NominalPlan.LoadDemand[iNode]+NominalPlan.LoadDemand[jNode]+NominalPlan.LoadDemand[kNode]>NominalPlan.LoadCapacity or GroupDemand[jGroup]-NominalPlan.LoadDemand[jNode]-NominalPlan.LoadDemand[kNode]+NominalPlan.LoadDemand[iNode]>NominalPlan.LoadCapacity:
@@ -335,36 +366,22 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                                 GroupDemand[iGroup] -= NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode] - NominalPlan.LoadDemand[kNode]
                                 GroupDemand[jGroup] += NominalPlan.LoadDemand[iNode] - NominalPlan.LoadDemand[jNode] - NominalPlan.LoadDemand[kNode]
                                 break
-                         
         BestEntropy = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
-        print("iteration = "+str(iter)+", Entropy = {:4.3e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.time()-t0_iter)+"[sec]")
-        if (Entropy_prev-BestEntropy)/Entropy_prev <= EntropyChangeCriteria:
+        if ClusterSubGroups==False:
+            print("iteration = "+str(iter)+", Entropy = {:4.3e}".format(BestEntropy), ", Iteration Clustering Time = {:3.2f}".format(time.time()-t0_iter)+"[sec]")
+        if (Entropy_prev-BestEntropy)/max(Entropy_prev,1e-4) <= EntropyChangeCriteria:
             break
         Entropy_prev = BestEntropy
-    print("Total Clustering Time = {:3.2f}".format(time.time()-t0)+"[sec]. All groups have less load than capacity")
 
-    # Make sure that the first group has the depot:
-    if NodesGroups[0][0] != 0:
-        for i in range(1,M):
-            if NodesGroups[i][0] == 0:
-                Temp = NodesGroups[0].copy()
-                NodesGroups[0] = NodesGroups[i].copy()
-                NodesGroups[i] = Temp.copy()
-                break
-    # Organize the groups:
-    CurGroupIntegration = NodesGroups[0]
-    for i in range(1,M-1):
-        Entropy = np.zeros((M,))+np.inf
-        for j in range(M-i):
-            Group = np.append(CurGroupIntegration, NodesGroups[j+i])
-            Entropy[i+j] = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
-        Group_MinEntropy = np.argmin(Entropy)
-        # Set Group_MinEntropy as Group number i:
-        Temp = NodesGroups[i].copy()
-        NodesGroups[i] = NodesGroups[Group_MinEntropy].copy()
-        NodesGroups[Group_MinEntropy] = Temp.copy()
-        # Update CurGroupIntegration:
-        CurGroupIntegration = np.append(CurGroupIntegration, NodesGroups[i])
+    if ClusterSubGroups==False:
+        print("Total Clustering Time = {:3.2f}".format(time.time()-t0)+"[sec]. All groups have less load than capacity")
+
+
+    # if ClusterSubGroups==False:
+    #     NodesGroups = []
+    #     NodesGroups.append([ 0 ,10,  11])
+    #     NodesGroups.append([ 0, 13,  9,  8,  5,  4, 21,  7])
+    #     NodesGroups.append([ 0 ,18 ,19, 20, 22 ,17, 14, 15 ,16 , 3, 2 , 1 , 6, 12])
 
     # Save the groups to file for future use:
     if ClusterSubGroups==False:
@@ -389,32 +406,36 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     for i in range(M):
         NodesGroups[i] = list(NodesGroups[i])
 
-    if ClusterSubGroups==True:
+    if ClusterSubGroups==False:
         NodesWitoutCS = set(range(N)) - set(NominalPlan.ChargingStations)
         if len(NominalPlan.ChargingStations) > 0:
             for i in range(M):
                 NodesWitoutCS = set(NodesGroups[i]) - set(NominalPlan.ChargingStations)
-                MaxEnergy = np.mean(NominalPlan.NodesEnergyTravel[NodesGroups[i][0],list(NodesWitoutCS-set([NodesGroups[i][0]]))])
-                MaxEnergy += np.mean(NominalPlan.NodesEnergyTravel[list(NodesWitoutCS-set([NodesGroups[i][0]])),NodesGroups[i][0]])
+                MaxEnergy = np.min(NominalPlan.NodesEnergyTravel[NodesGroups[i][0],list(NodesWitoutCS-set([NodesGroups[i][0]]))])
+                MaxEnergy += np.min(NominalPlan.NodesEnergyTravel[list(NodesWitoutCS-set([NodesGroups[i][0]])),NodesGroups[i][0]])
                 for j in range(1,len(NodesGroups[i])):
-                    MaxEnergy += np.mean(NominalPlan.NodesEnergyTravel[NodesGroups[i][j],list(NodesWitoutCS-set([NodesGroups[i][0],j]))])
+                    MaxEnergy += np.min(NominalPlan.NodesEnergyTravel[NodesGroups[i][j],list(NodesWitoutCS-set([NodesGroups[i][0],j]))])
                 
-                NumberOfMaxCS = MaxEnergy + NominalPlan.InitialChargeStage
-                NumOfCS = np.round(min(max(2.0,-NumberOfMaxCS/NominalPlan.InitialChargeStage),len(NominalPlan.ChargingStations)))
+                NumberOfMaxCS = MaxEnergy + NominalPlan.BatteryCapacity
+                NumOfCS = np.round(min(max(2.0,-NumberOfMaxCS/NominalPlan.BatteryCapacity),len(NominalPlan.ChargingStations)))
 
                 CS_list = []
-                NodesList = NodesGroups[i][1:].copy()
                 for j in range(int(NumOfCS)):
+                    if j==0:
+                        NodesList = NodesGroups[i][1:].copy()
+                    else:
+                        NodesList = NodesGroups[i].copy()
                 # Mean Time to CS:
                     MeanTimeToCS = np.inf*np.ones((len(NominalPlan.ChargingStations),))
                     for iCS in range(len(NominalPlan.ChargingStations)):
                         if NominalPlan.ChargingStations[iCS] in NodesGroups[i]:
                             continue
                         TimeFromNodesToCS = NodesTimeOfTravel[NodesList,NominalPlan.ChargingStations[iCS]]
-                        for k in range(j):
-                            for iNode in range(len(NodesList)):
-                                if NodesTimeOfTravel[NodesList[iNode],CS_list[k]] < TimeFromNodesToCS[iNode]:
-                                    TimeFromNodesToCS[iNode] = NodesTimeOfTravel[NodesList[iNode],CS_list[k]]
+                        if j>1:
+                            for k in range(j):
+                                for iNode in range(len(NodesList)):
+                                    if NodesTimeOfTravel[NodesList[iNode],CS_list[k]] < TimeFromNodesToCS[iNode]:
+                                        TimeFromNodesToCS[iNode] = TimeFromNodesToCS[iNode]
                         if j>0 and np.any(TimeFromNodesToCS==NodesTimeOfTravel[NodesList,NominalPlan.ChargingStations[iCS]])==False:
                             continue
                         MeanTimeToCS[iCS] = np.linalg.norm(TimeFromNodesToCS,ord=2)
@@ -477,6 +498,7 @@ def CreateSubPlanFromPlan (NominalPlan: DataTypes.NominalPlanning, NodesGroups):
     NominalPlanGroup.NodesRealNames = NodesGroups
     NominalPlanGroup.NumberOfChargeStations = len(NominalPlanGroup.ChargingStations)
     NominalPlanGroup.LoadCapacity = NominalPlan.LoadCapacity
+    NominalPlanGroup.BatteryCapacity = NominalPlan.BatteryCapacity
 
     return NominalPlanGroup
 
@@ -833,10 +855,12 @@ def LoadScenarioFileEvrp(ScenarioFileName: str, NominalPlan: DataTypes.NominalPl
             NominalPlan.NodesTimeOfTravel[j,i] = NominalPlan.NodesTimeOfTravel[i,j]
             NominalPlan.NodesEnergyTravel[i,j] = -NominalPlan.NodesTimeOfTravel[i,j] * EnergyConsumption
             NominalPlan.NodesEnergyTravel[j,i] = NominalPlan.NodesEnergyTravel[i,j]
-            NominalPlan.NodesEnergyTravelSigma[i,j] = 0
-            NominalPlan.NodesEnergyTravelSigma[j,i] = NominalPlan.NodesEnergyTravelSigma[i,j]
-            NominalPlan.TravelSigma[i,j] = 0
-            NominalPlan.TravelSigma[j,i] = NominalPlan.TravelSigma[i,j]
+
+    # NominalPlan.LoadDemand = NominalPlan.LoadDemand*0
+    NominalPlan.TravelSigma = NominalPlan.NodesTimeOfTravel * 0.1
+    NominalPlan.NodesEnergyTravelSigma = -NominalPlan.NodesEnergyTravel * 0.1
+    NominalPlan.TravelSigma2 = NominalPlan.TravelSigma**2
+    NominalPlan.NodesEnergyTravelSigma2 = NominalPlan.NodesEnergyTravelSigma**2
 
     NominalPlan.NumberOfDepots = 1
     NominalPlan.NodesVelocity = np.ones((NominalPlan.N,NominalPlan.N))
@@ -845,8 +869,7 @@ def LoadScenarioFileEvrp(ScenarioFileName: str, NominalPlan: DataTypes.NominalPl
     NominalPlan.NodesTaskPower = np.zeros((NominalPlan.N,1))
     NominalPlan.NodesPriorities = np.zeros((NominalPlan.N,1))
     NominalPlan.LoadCapacity = PltParams.LoadCapacity
-    NominalPlan.TravelSigma2 = NominalPlan.TravelSigma**2
-    NominalPlan.NodesEnergyTravelSigma2 = NominalPlan.NodesEnergyTravelSigma**2
+    NominalPlan.BatteryCapacity = PltParams.BatteryCapacity
 
 
     return NominalPlan, PltParams, OptVal

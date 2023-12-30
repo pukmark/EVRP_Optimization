@@ -35,11 +35,11 @@ def CalcRechargeProfile(NominalPlan: SimDataTypes.NominalPlanning,
             ChargeRate = np.zeros((iCS,))
             for jCS in range(iCS):
                 jCS_index = np.argwhere(NominalPlan.ChargingStations == iCS_order[jCS])[0][0]
-                iProfile = np.argwhere(NominalPlan.ChargingProfile[jCS_index][:,0] <= ChargingStationsData.EnergyExited[jCS_index])[-1][0]
+                iProfile = np.argwhere(NominalPlan.ChargingProfile[jCS_index][:,0] <= max(0.0,ChargingStationsData.EnergyExited[jCS_index]))[-1][0]
                 ChargeRate[jCS]= NominalPlan.ChargingRateProfile[jCS_index][iProfile,1]
             iMaxChargeRate = np.argmax(ChargeRate)
             kCS_index = np.argwhere(NominalPlan.ChargingStations == iCS_order[iMaxChargeRate])[0][0]
-            iProfile = np.argwhere(NominalPlan.ChargingProfile[kCS_index][:,0] <= ChargingStationsData.EnergyExited[kCS_index])[-1][0]
+            iProfile = np.argwhere(NominalPlan.ChargingProfile[kCS_index][:,0] <= max(0.0,ChargingStationsData.EnergyExited[jCS_index]))[-1][0]
             dEnergy = np.min([BatteryCapacity-ChargingStationsData.EnergyExited[kCS_index], NominalPlan.ChargingProfile[kCS_index][iProfile+1,0]-NominalPlan.ChargingProfile[kCS_index][iProfile,0], EnergyForRecharge, -ChargingStationsData.EnergyEntered[iCS_index]])
             EnergyForRecharge -= dEnergy
             RechargeTime += dEnergy/NominalPlan.ChargingRateProfile[kCS_index][iProfile,1]
@@ -55,11 +55,11 @@ def CalcRechargeProfile(NominalPlan: SimDataTypes.NominalPlanning,
         ChargeRate = np.zeros((len(iCS_order),))
         for jCS in range(len(iCS_order)):
             jCS_index = np.argwhere(NominalPlan.ChargingStations == iCS_order[jCS])[0][0]
-            iProfile = np.argwhere(NominalPlan.ChargingProfile[jCS_index][:,0] <= ChargingStationsData.EnergyExited[jCS_index])[-1][0]
+            iProfile = np.argwhere(NominalPlan.ChargingProfile[jCS_index][:,0] <= max(0.0,ChargingStationsData.EnergyExited[jCS_index]))[-1][0]
             ChargeRate[jCS]= NominalPlan.ChargingRateProfile[jCS_index][iProfile,1]
         iMaxChargeRate = np.argmax(ChargeRate)
         iCS_index = np.argwhere(NominalPlan.ChargingStations == iCS_order[iMaxChargeRate])[0][0]
-        iProfile = np.argwhere(NominalPlan.ChargingProfile[iCS_index][:,0] <= ChargingStationsData.EnergyExited[iCS_index])[-1][0]
+        iProfile = np.argwhere(NominalPlan.ChargingProfile[iCS_index][:,0] <= max(0.0,ChargingStationsData.EnergyExited[jCS_index]))[-1][0]
         dEnergy = np.min([BatteryCapacity-ChargingStationsData.EnergyExited[iCS_index], NominalPlan.ChargingProfile[iCS_index][iProfile+1,0]-NominalPlan.ChargingProfile[iCS_index][iProfile,0], EnergyForRecharge])
         ChargingStationsData.EnergyExited[iCS_index] += dEnergy
         EnergyForRecharge -= dEnergy
@@ -82,7 +82,7 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
                                     EnergyLeftUncertainty,
                                     ChargingStationsData: SimDataTypes.ChargingStations,
                                     NodesTrajectory, 
-                                    BestPlan: SimDataTypes.BestPlan):
+                                    BestPlan: SimDataTypes.BestPlan,):
 
     # append current node to trajectory:
     if BestPlan.TimeStarted <= 1.0e-4:
@@ -122,31 +122,28 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
         return BestPlan, NodesTrajectory, Cost, ChargingStationsData
              
     # Move To next node:
-    i_array = NominalPlan.NodesTimeOfTravel[i_CurrentNode,:].argsort()
-    for i in range(len(NodesTrajectory)):
-        i_array = np.delete(i_array,np.where(i_array ==NodesTrajectory[i]))
-    for i in range(len(NominalPlan.ChargingStations)):
-        if ChargingStationsData.Active[i] == False:
-            i_array = np.delete(i_array,np.where(i_array ==NominalPlan.ChargingStations[i]))
+    i_array = []
+    # first Do all nodes in the groups of current node:
+    for iGroup in range(len(NominalPlan.SubGroups)):
+        if i_CurrentNode in NominalPlan.SubGroups[iGroup]:
+            i_array = list(set(NominalPlan.SubGroups[iGroup]) - set(NodesTrajectory))
+            break
+
+    if i_array == []:
+        i_array = NominalPlan.NodesTimeOfTravel[i_CurrentNode,:].argsort()
+        for i in range(len(NodesTrajectory)):
+            i_array = np.delete(i_array,np.where(i_array ==NodesTrajectory[i]))
+        for i in range(len(NominalPlan.ChargingStations)):
+            if ChargingStationsData.Active[i] == False:
+                i_array = np.delete(i_array,np.where(i_array ==NominalPlan.ChargingStations[i]))
     
-    # NotActiveCS = []
-    # for i in range(len(ChargingStationsData.ChargingStationsNodes)):
-    #     if ChargingStationsData.Active[i] == False:
-    #         NotActiveCS.append(ChargingStationsData.ChargingStationsNodes[i])
     NotActiveCS = ChargingStationsData.ChargingStationsNodes[ChargingStationsData.Active==False]
 
-    # if len(i_array) > 13:
-    #     i_array = i_array[0:3]
-    # elif len(i_array) > 10:
-    #     i_array = i_array[0:4]
-    # elif len(i_array) > 6:
-    #     i_array = i_array[0:5]
-    if len(i_array) > 6:
-        i_array = i_array[0:5]
+    if len(i_array) > 5:
+        i_array = i_array[0:4]
+
     # Start loop over all remaining nodes:
     for iNode in i_array:
-        # if len(NodesTrajectory)==7:
-        #     print("Exploring Trajectory: ",[NominalPlan.NodesRealNames[i] for i in NodesTrajectory])
         if np.any(np.array([iNode]) == NodesTrajectory): # Node already visited
             continue
         if StopProgram.value == False and (time.time()-BestPlan.TimeStarted<=DeltaTimeToStop.value*0.75):
@@ -159,7 +156,7 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
         else:
             BestPlan.StopProgram = True
             break
-
+        # Check if current node is a charging station and check ignoring it:
         if iNode in NominalPlan.ChargingStations:
             ChargingStationsData.Active[np.argwhere(NominalPlan.ChargingStations == iNode)] = False
             NumActiveNodes = NominalPlan.N - np.sum(ChargingStationsData.Active==False)
@@ -193,7 +190,7 @@ def SolveRecursive_ChargingStations(PltParams: SimDataTypes.PlatformParams,
         if (EnergyLeftNext + ChargingStationsData.MaxChargingPotential - NominalPlan.EnergyAlpha*EnergyLeftUncertaintyNext < 0.0) or (TourTimeNext + np.min(NominalPlan.NodesTimeOfTravel[i_array,0]) + NominalPlan.TimeAlpha*TourTimeUncertaintyNext>=SharedBestCost.value-1e-8):
             continue
 
-        # Check if current node is has a optimal or feasible potential:
+        # # Check if current node is has a optimal or feasible potential:
         Nodes2Go = list(set(range(NominalPlan.N)) - set(NodesTrajectory) - set([iNode]) - set(ChargingStationsData.ChargingStationsNodes))
         if len(Nodes2Go) >= 1:
             EstMinTimeToGo = np.min(NominalPlan.NodesTimeOfTravel[iNode,Nodes2Go]) + np.sum(np.sort(np.min(NominalPlan.NodesTimeOfTravel[Nodes2Go,:][:,Nodes2Go],axis=0))[:-1]) + np.min(NominalPlan.NodesTimeOfTravel[Nodes2Go,0])
@@ -243,7 +240,7 @@ def SolveParallelRecursive_ChargingStations(PltParams: SimDataTypes.PlatformPara
     StopProgram.value = False
     DeltaTimeToStop.value = MaxCalcTimeFromUpdate
     cpus = os.cpu_count()
-    SingleCoreN = 12
+    SingleCoreN = 10
 
     # append current node to trajectory:
     if NominalPlan.N <= SingleCoreN:
@@ -266,7 +263,7 @@ def SolveParallelRecursive_ChargingStations(PltParams: SimDataTypes.PlatformPara
     # i_array = i_array[i_array != i_CurrentNode]
     Nodes = set(range(NominalPlan.N))-set(NodesTrajectory)-set([i_CurrentNode])
     i = 0
-    while math.factorial(NominalPlan.N-1)/math.factorial(SingleCoreN+i-1)>50000:
+    while math.factorial(NominalPlan.N-1)/math.factorial(SingleCoreN+i-1)>2000:
         i+=1
     premuts = list(itertools.permutations(Nodes,NominalPlan.N-SingleCoreN-i))
     NumberOfIters = len(premuts)
@@ -282,7 +279,7 @@ def SolveParallelRecursive_ChargingStations(PltParams: SimDataTypes.PlatformPara
         Times[k] = TourTimeNext + np.sqrt(TourTimeUncertainty2Next)*NominalPlan.TimeAlpha
         k+=1
     indxes = np.argsort(Times)[0:int(len(Times))]
-    for indx in indxes:
+    for indx in indxes[:int(len(indxes)/2)]:
         premut = premuts[indx]
         NodesTrajectoryNext = NodesTrajectory.copy()
         NodesTrajectoryNext.append(i_CurrentNode)
