@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import SimDataTypes as DataTypes
 import csv
-from CVX_Solution import *
 # from CVX_Solution_ChargingStations import *
 from RecursiveOptimalSolution_ChargingStations import *
 from Gurobi_Solution_ChargingStations import *
@@ -145,8 +144,8 @@ NominalPlan.TimeAlpha = norm.ppf(SolutionProbabilityTimeReliability)
 #                                                         Cost= 0.0)
 
 
-Method = "PartialMax_Eigenvalue" # "Max_Eigenvalue" or "Frobenius" or "SqrSum_Eigenvalue" or "Mean_MaxRow" or "Mean_MaxCol" or "PartialMax_Eigenvalue"
-NodesGroups = DivideNodesToGroups(NominalPlan, NumberOfCars, Method, MustIncludeNodeZero=True, MaxGroupSize=MaxNumberOfNodesPerCar, isplot=True)
+ClusteringMethod = "SqrSum_Eigenvalue" # "Max_Eigenvalue" or "Frobenius" or "SqrSum_Eigenvalue" or "Mean_MaxRow" or "Mean_MaxCol" or "PartialMax_Eigenvalue"
+NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, ClusterSubGroups=False)
 
 BestPlan = DataTypes.BestPlan(N, ChargingStationsNodes=NominalPlan.ChargingStations)
 t = time.time()

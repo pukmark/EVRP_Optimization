@@ -9,7 +9,8 @@ import math
 
 def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams, 
                               NominalPlan: SimDataTypes.NominalPlanning, 
-                              MaxCalcTimeFromUpdate: float = 3600):
+                              MaxCalcTimeFromUpdate: float = 3600,
+                              InitialGuess: np.ndarray = None):
     n = NominalPlan.N
     model = gp.Model("ChargingStations_MinMax")
 
@@ -24,11 +25,13 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
 
     InitialTraj = np.zeros((n,n),dtype=int)
 
-    # if n == 7:
-    #     BestTraj =  np.array([[0, 4, 6, 3,0],[1, 5,2,1]], dtype=object)
-    #     for i in range(BestTraj.shape[0]):
-    #         for j in range(len(BestTraj[i])-1):
-    #             InitialTraj[BestTraj[i][j],BestTraj[i][j+1]] = 1
+    if InitialGuess is not None:
+        for i in range(InitialGuess.shape[1]):
+            j=0
+            InitialTraj[InitialGuess[j,i],InitialGuess[j+1,i]] = 1
+            while InitialGuess[j+1,i] not in NominalPlan.CarsInDepots:
+                j += 1
+                InitialTraj[InitialGuess[j,i],InitialGuess[j+1,i]] = 1
     
     DecisionVar.Start = InitialTraj
     
@@ -184,6 +187,7 @@ def SolveGurobi_Convex_MinMax(PltParams: SimDataTypes.PlatformParams,
     model.setParam("MIPFocus", 1)
     model.setParam("DisplayInterval", 30)
     model.optimize(callback=cb)
+    model.setParam('LogToConsole', 0)
 
 
     # # Transforming the solution to a path

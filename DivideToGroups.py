@@ -3,9 +3,9 @@ import SimDataTypes as DataTypes
 import matplotlib.pyplot as plt
 import time
 from copy import deepcopy
-from multiprocessing import Pool, Lock, Value
 import itertools
 import xmltodict as xml
+import os
 
 
 def normalize(x):
@@ -54,6 +54,12 @@ def CalcEntropy(NodesGroups, NodesTimeOfTravel, Method, GroupsChanged: list = []
             Entropy_i[iGroup] = w * len(NodesGroups[iGroup])
     elif Method == "Frobenius":
         for iGroup in GroupsChanged:
+            if len(NodesGroups[iGroup]) == 0:
+                Entropy_i[iGroup] = 1e8
+                continue
+            if len(NodesGroups[iGroup]) == 1:
+                Entropy_i[iGroup] = 0.0
+                continue
             GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
             Entropy_i[iGroup] = np.linalg.norm(GroupTimeMatrix, 'fro')
     elif Method == "Mean_MaxRow":
@@ -61,31 +67,36 @@ def CalcEntropy(NodesGroups, NodesTimeOfTravel, Method, GroupsChanged: list = []
             Entropy_i[iGroup] = np.sum(np.max(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]], axis=1))**2
     elif Method == "Sum_AbsEigenvalue":
         for iGroup in GroupsChanged:
-            # GroupTimeMatrix = CreateGroupMatrix(NodesGroups[iGroup], NodesTimeOfTravel)
+            if len(NodesGroups[iGroup]) == 0:
+                Entropy_i[iGroup] = 1e8
+                continue
+            if len(NodesGroups[iGroup]) == 1:
+                Entropy_i[iGroup] = 0.0
+                continue
             w, v = np.linalg.eig(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
-            Entropy_i[iGroup] = np.sum(np.abs(w))
+            w = np.abs(w)
+            Entropy_i[iGroup] = np.sum(w)
+    elif Method == "SumSqr_AbsEigenvalue":
+        for iGroup in GroupsChanged:
+            if len(NodesGroups[iGroup]) == 0:
+                Entropy_i[iGroup] = 1e8
+                continue
+            if len(NodesGroups[iGroup]) == 1:
+                Entropy_i[iGroup] = 0.0
+                continue
+            w, v = np.linalg.eig(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
+            w = np.abs(w)
+            Entropy_i[iGroup] = np.sum(w*w)
     elif Method == "PartialMax_Eigenvalue":
         for iGroup in GroupsChanged:
-            GroupTimeMatrix = CreateGroupMatrix(list(set(NodesGroups[iGroup]) - set({0})), NodesTimeOfTravel)
-            w, _ = np.linalg.eig(GroupTimeMatrix)
+            w, _ = np.linalg.eig(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]])
             w = np.sort(np.abs(w))[::-1]
             ind = min(3,len(w))
             weights = np.array(range(1,ind+1))[::-1]
-            Entropy_i[iGroup] = len(w) * np.sum((np.abs(w[0:ind]))**2)
+            Entropy_i[iGroup] = np.sum((np.abs(w[0:ind])))
     elif Method == "Mean_Method":
         for iGroup in GroupsChanged:
             Entropy_i[iGroup] = np.sum(np.mean(NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]], axis=0))**2
-    # elif Method == "Greedy_Method":
-        
-    #     for iGroup in GroupsChanged:
-    #         Group = set(GroupsChanged)
-    #         Time = 0.0
-    #         iGroup = Group[0]
-    #         CostMat = NodesTimeOfTravel[NodesGroups[iGroup],:][:,NodesGroups[iGroup]]
-    #         while len(Group)>0:
-    #             i
-    #             Time += np.argmin(NodesTimeOfTravel[Group[0],Group])
-
     else:
         print("Error: Unknown method for calculating Entropy")
     
@@ -108,9 +119,9 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
 
     if ClusterSubGroups == True:
         NodesSet = set(range(N)) - set(NominalPlan.ChargingStations) - set(NominalPlan.CarsInDepots)
-        NumSubGroups = int(len(NominalPlan.CarsInDepots))
+        NumSubGroups = NominalPlan.NumberOfCars
         M = NumSubGroups
-        for iGroup in range(NumSubGroups-1):
+        for iGroup in range(NumSubGroups):
             Group = []
             while len(Group) < MaxGroupSize and len(NodesSet)>0:
                 Entropy = np.zeros((len(NodesSet),))
@@ -124,8 +135,8 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                 if len(NodesSet) == 2 and iGroup == NumSubGroups-2:
                     break
             NodesGroups.append(np.array(Group, dtype=int))
-        
-        NodesGroups.append(np.array(list(NodesSet), dtype=int))
+        if len(NodesSet) > 0:
+            NodesGroups.append(np.array(list(NodesSet), dtype=int))
 
 
     else:
@@ -133,65 +144,62 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
         CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
         for i in NominalPlan.CarsInDepots:
             NodesGroups.append(np.array([i]))
-            TimeMat = NodesTimeOfTravel[list(CustomersNodes),:][:,list(CustomersNodes)]
-            max_Time_i = np.argmax(np.max(TimeMat, axis=1))
-            NodesGroups[-1] = np.append(NodesGroups[-1], list(CustomersNodes)[max_Time_i])
-            CustomersNodes = CustomersNodes - set([list(CustomersNodes)[max_Time_i]])
-        for i in range(1,M):
-            Dist2 = np.zeros((len(CustomersNodes),))
-            for j in range(i):
-                Dist2 += np.sqrt(NodesTimeOfTravel[NodesGroups[j][-1],list(CustomersNodes)])
-            max_Dist2_i = np.argmax(Dist2)
-            NodesGroups[i] = np.append(NodesGroups[i], list(CustomersNodes)[max_Dist2_i])
-            CustomersNodes = CustomersNodes - set([list(CustomersNodes)[max_Dist2_i]])
-            
-        argDemand = np.argsort(NominalPlan.LoadDemand)[::-1]
-        for iNode in argDemand:
-            if iNode not in CustomersNodes:
-                continue
+        
+        Entropy_i = np.zeros((M,))
+        while len(CustomersNodes) > 0:
+            maxLoad = -1
+            iNode_MaxLoad = 0
+            for iNode in CustomersNodes:
+                if NominalPlan.LoadDemand[iNode] > maxLoad:
+                    maxLoad = NominalPlan.LoadDemand[iNode]
+                    iNode_MaxLoad = iNode
+
             TimeToNode = np.zeros((M,))
+            Entropy_i = CalcEntropy(NodesGroups.copy(), NodesTimeOfTravel, Method)
             for iGroup in range(M):
-                TimeToNode[iGroup] = CalcEntropy([np.append(NodesGroups[iGroup], iNode)], NodesTimeOfTravel, Method)
+                Prev_Entropy_i = Entropy_i[iGroup].copy()
+                Entropy_i[iGroup] = CalcEntropy([np.append(NodesGroups[iGroup], iNode_MaxLoad)], NodesTimeOfTravel, Method)
+                TimeToNode[iGroup] = CalcTotalEntropy(Entropy_i)
+                Entropy_i[iGroup] = Prev_Entropy_i
             Group_MinTime = np.argsort(TimeToNode)
             for iGroup in Group_MinTime:
-                if (NodesGroups[iGroup].shape[0]+1 <= NominalPlan.MaxNumberOfNodesPerCar) and (NominalPlan.LoadDemand[iNode]+np.sum(NominalPlan.LoadDemand[NodesGroups[iGroup]])<=NominalPlan.LoadCapacity):
-                    NodesGroups[iGroup] = np.append(NodesGroups[iGroup], iNode)
+                if (NodesGroups[iGroup].shape[0]+1 <= NominalPlan.MaxNumberOfNodesPerCar) and (NominalPlan.LoadDemand[iNode_MaxLoad]+np.sum(NominalPlan.LoadDemand[NodesGroups[iGroup]])<=NominalPlan.LoadCapacity):
+                    NodesGroups[iGroup] = np.append(NodesGroups[iGroup], iNode_MaxLoad)
+                    Entropy_i[iGroup] = CalcEntropy([NodesGroups[iGroup]], NodesTimeOfTravel, Method)
+                    CustomersNodes = CustomersNodes - set([iNode_MaxLoad])
                     break
                 if iGroup == Group_MinTime[-1]:
-                    np.append(NodesGroups[Group_MinTime[0]], iNode)
+                    np.append(NodesGroups[Group_MinTime[0]], iNode_MaxLoad)
                     NCust = len(set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations))
-                    print("Error: Node {:} can't be added to any group".format(iNode)," Only {:3.2f}[%] nodes assingned".format(100*(NCust-len(CustomersNodes))/NCust))
+                    print("Error: Node {:} can't be added to any group".format(iNode_MaxLoad)," Only {:3.2f}[%] nodes assingned".format(100*(NCust-len(CustomersNodes))/NCust))
                     return []
 
     # Load file for initial groups:
-    if ClusterSubGroups==False:
-        try:
-            NodesGroupsGuess = []
-            # open file and read the content in a list
-            SumNodes = 0
-            with open(r'./Groups.txt', 'r') as fp:
-                for line in fp:
-                    x = line[:-1]
-                    # add current item to the list
-                    x = x.strip('][').split(', ')
-                    NodesGroupsGuess.append([int(i) for i in x])
-                    SumNodes += len(NodesGroupsGuess[-1])
-                    if np.sum(NominalPlan.LoadDemand[NodesGroupsGuess[-1]])>NominalPlan.LoadCapacity:
-                        break
-                if (len(NodesGroupsGuess) == len(NodesGroups)) and (SumNodes == N-len(NominalPlan.ChargingStations)+len(NodesGroups)-1):
-                    NodesGroups = NodesGroupsGuess.copy()
-        except:
-            print("Error: Can't open file 'Groups.txt'")
-    
-    # if ClusterSubGroups==False and len(NominalPlan.ChargingStations)>0:
-    #     NodesGroups = []
-    #     NodesGroups.append([ 0 ,  5,7,4])
-    #     NodesGroups.append([ 1,6,9,10,2])
+    # if ClusterSubGroups==False:
+    #     try:
+    #         NodesGroupsGuess = []
+    #         # open file and read the content in a list
+    #         SumNodes = 0
+    #         with open(r'./Groups.txt', 'r') as fp:
+    #             for line in fp:
+    #                 x = line[:-1]
+    #                 # add current item to the list
+    #                 x = x.strip('][').split(', ')
+    #                 NodesGroupsGuess.append([int(i) for i in x])
+    #                 SumNodes += len(NodesGroupsGuess[-1])
+    #                 if np.sum(NominalPlan.LoadDemand[NodesGroupsGuess[-1]])>NominalPlan.LoadCapacity:
+    #                     break
+    #             if (len(NodesGroupsGuess) == len(NodesGroups)) and (SumNodes == N-len(NominalPlan.ChargingStations)+len(NodesGroups)-1):
+    #                 NodesGroups = NodesGroupsGuess.copy()
+    #                 print("Initial Groups loaded from file")
+    #     except:
+    #         pass
 
     # Calculate the demand of each group:
     GroupDemand = np.zeros((M,))
     CustomersNodes = set(range(N)) - set(NominalPlan.CarsInDepots) - set(NominalPlan.ChargingStations)
     for i in range(M):
+        if len(NodesGroups[i]) == 0: continue
         GroupDemand[i] = np.sum(NominalPlan.LoadDemand[NodesGroups[i]])
         CustomersNodes = CustomersNodes - set(NodesGroups[i])
         if GroupDemand[i] > NominalPlan.LoadCapacity:
@@ -223,10 +231,10 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
             CurNodesGroups = NodesGroups.copy()
             GroupEntropySort_i = np.argsort(BestEntropy_i)[::-1]
             for iGroup in GroupEntropySort_i:
-                if len(CurNodesGroups[iGroup]) <= 2: continue
+                if len(CurNodesGroups[iGroup]) <= 1: continue
                 for CurNode in CurNodesGroups[iGroup][i1:]:
                     Entropy = np.ones((M,))*np.inf
-                    if len(CurNodesGroups[iGroup]) <= 2: continue
+                    if len(CurNodesGroups[iGroup]) <= 1: continue
                     for jGroup in range(M):
                         if (iGroup == jGroup):
                             Entropy[jGroup] = BestEntropy
@@ -256,9 +264,57 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
             for i in range(M):
                 GroupChanged[i] = True if (GroupChanged_new[i]==True or GroupChanged[i]==True) else False
                 BestEntropy_i[i] = CalcEntropy([NodesGroups[i]], NodesTimeOfTravel, Method)
-        # if BestEntropy < Entropy_prev:
-        #     Entropy_prev = BestEntropy
-        #     continue
+                BestEntropy = CalcTotalEntropy(BestEntropy_i)
+    # Try to move 2 nodes between groups:
+        if BestEntropy == Entropy_prev:
+            CurNodesGroups = NodesGroups.copy()
+            GroupEntropySort_i = np.argsort(BestEntropy_i)[::-1]
+            for iGroup in GroupEntropySort_i:
+                if len(CurNodesGroups[iGroup]) <= 2: continue
+                premuts_j = list(itertools.combinations(CurNodesGroups[iGroup][1:],2))
+                for CurNode_1, CurNode_2 in premuts_j:
+                    Entropy = np.ones((M,))*np.inf
+                    for jGroup in range(M):
+                        if (iGroup == jGroup):
+                            Entropy[jGroup] = BestEntropy
+                            continue
+                        if (GroupChanged[iGroup]==False and GroupChanged[jGroup]==False) or (len(CurNodesGroups[jGroup])+1 > MaxGroupSize) or GroupDemand[jGroup]+NominalPlan.LoadDemand[CurNode_1]+NominalPlan.LoadDemand[CurNode_2]>NominalPlan.LoadCapacity:
+                            continue
+                        if CurNode_1 not in CurNodesGroups[iGroup] or CurNode_2 not in CurNodesGroups[iGroup]:
+                            continue
+                        arg_iGroup_1 = np.argwhere(CurNodesGroups[iGroup]==CurNode_1)
+                        CurNodesGroups[iGroup] = np.delete(CurNodesGroups[iGroup], arg_iGroup_1)
+                        arg_iGroup_2 = np.argwhere(CurNodesGroups[iGroup]==CurNode_2)
+                        CurNodesGroups[iGroup] = np.delete(CurNodesGroups[iGroup], arg_iGroup_2)
+                        CurNodesGroups[jGroup] = np.append(CurNodesGroups[jGroup], CurNode_1)
+                        CurNodesGroups[jGroup] = np.append(CurNodesGroups[jGroup], CurNode_2)
+                        Entropy[jGroup] = CalcTotalEntropy(CalcEntropy(CurNodesGroups.copy(), NodesTimeOfTravel, Method, [iGroup, jGroup], BestEntropy_i.copy()))
+                        arg_jGroup_1 = np.argwhere(CurNodesGroups[jGroup]==CurNode_1)
+                        CurNodesGroups[jGroup] = np.delete(CurNodesGroups[jGroup], arg_jGroup_1)
+                        arg_jGroup_2 = np.argwhere(CurNodesGroups[jGroup]==CurNode_2)
+                        CurNodesGroups[jGroup] = np.delete(CurNodesGroups[jGroup], arg_jGroup_2)
+                        CurNodesGroups[iGroup] = np.append(CurNodesGroups[iGroup], CurNode_1)
+                        CurNodesGroups[iGroup] = np.append(CurNodesGroups[iGroup], CurNode_2)
+                    Group_MinEntropy = np.argmin(Entropy)
+                    BestEntropy = Entropy[Group_MinEntropy]
+                    arg_iGroup_1 = np.argwhere(CurNodesGroups[iGroup]==CurNode_1)
+                    CurNodesGroups[iGroup] = np.delete(CurNodesGroups[iGroup], arg_iGroup_1)
+                    arg_iGroup_2 = np.argwhere(CurNodesGroups[iGroup]==CurNode_2)
+                    CurNodesGroups[iGroup] = np.delete(CurNodesGroups[iGroup], arg_iGroup_2)
+                    CurNodesGroups[Group_MinEntropy] = np.append(CurNodesGroups[Group_MinEntropy], CurNode_1)
+                    CurNodesGroups[Group_MinEntropy] = np.append(CurNodesGroups[Group_MinEntropy], CurNode_2)
+                    if Group_MinEntropy != iGroup:
+                        GroupDemand[iGroup] -= NominalPlan.LoadDemand[CurNode_1] + NominalPlan.LoadDemand[CurNode_2]
+                        GroupDemand[Group_MinEntropy] += NominalPlan.LoadDemand[CurNode_1] + NominalPlan.LoadDemand[CurNode_2]
+                        NodesGroups = CurNodesGroups.copy()
+                        BestEntropy_i = CalcEntropy(NodesGroups.copy(), NodesTimeOfTravel, Method)
+                        GroupChanged_new[iGroup] = True
+                        GroupChanged_new[Group_MinEntropy] = True
+                CurNodesGroups[iGroup] = np.sort(CurNodesGroups[iGroup])
+            for i in range(M):
+                GroupChanged[i] = True if (GroupChanged_new[i]==True or GroupChanged[i]==True) else False
+                BestEntropy_i[i] = CalcEntropy([NodesGroups[i]], NodesTimeOfTravel, Method)
+                BestEntropy = CalcTotalEntropy(BestEntropy_i)
 
         # Switch between groups:
         GroupEntropySort_i = np.argsort(BestEntropy_i)[::-1]
@@ -281,7 +337,6 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                                 continue
                             if jNode in NominalPlan.CarsInDepots and iNode not in NominalPlan.CarsInDepots:
                                 continue
-                            # if iNode==0 or jNode==0: continue
                             if jNode in CurSubNodesGroups[0] or iNode in CurSubNodesGroups[1]: 
                                 continue
                             if GroupDemand[iGroup]-NominalPlan.LoadDemand[iNode]+NominalPlan.LoadDemand[jNode]>NominalPlan.LoadCapacity or GroupDemand[jGroup]-NominalPlan.LoadDemand[jNode]+NominalPlan.LoadDemand[iNode]>NominalPlan.LoadCapacity:
@@ -310,11 +365,6 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                 GroupChanged[i] = True if (GroupChanged_new[i]==True or GroupChanged[i]==True) else False
                 BestEntropy_i[i] = CalcEntropy([NodesGroups[i]], NodesTimeOfTravel, Method)
             BestEntropy = CalcTotalEntropy(BestEntropy_i)
-
-        # if Entropy_prev > BestEntropy:
-        #     Entropy_prev = BestEntropy
-        #     continue
-        # BestEntropy = CalcTotalEntropy(CalcEntropy(NodesGroups, NodesTimeOfTravel, Method))
 
         # Switch between groups 1 to 2:
         CurNodesGroups = NodesGroups.copy()
@@ -376,13 +426,6 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
     if ClusterSubGroups==False:
         print("Total Clustering Time = {:3.2f}".format(time.time()-t0)+"[sec]. All groups have less load than capacity")
 
-
-    # if ClusterSubGroups==False:
-    #     NodesGroups = []
-    #     NodesGroups.append([ 0 ,10,  11])
-    #     NodesGroups.append([ 0, 13,  9,  8,  5,  4, 21,  7])
-    #     NodesGroups.append([ 0 ,18 ,19, 20, 22 ,17, 14, 15 ,16 , 3, 2 , 1 , 6, 12])
-
     # Save the groups to file for future use:
     if ClusterSubGroups==False:
         with open(r'./Groups.txt', 'w') as fp:
@@ -411,13 +454,13 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
         if len(NominalPlan.ChargingStations) > 0:
             for i in range(M):
                 NodesWitoutCS = set(NodesGroups[i]) - set(NominalPlan.ChargingStations)
-                MaxEnergy = np.min(NominalPlan.NodesEnergyTravel[NodesGroups[i][0],list(NodesWitoutCS-set([NodesGroups[i][0]]))])
-                MaxEnergy += np.min(NominalPlan.NodesEnergyTravel[list(NodesWitoutCS-set([NodesGroups[i][0]])),NodesGroups[i][0]])
+                MaxEnergy = np.mean(NominalPlan.NodesEnergyTravel[NodesGroups[i][0],list(NodesWitoutCS-set([NodesGroups[i][0]]))])
+                MaxEnergy += np.mean(NominalPlan.NodesEnergyTravel[list(NodesWitoutCS-set([NodesGroups[i][0]])),NodesGroups[i][0]])
                 for j in range(1,len(NodesGroups[i])):
-                    MaxEnergy += np.min(NominalPlan.NodesEnergyTravel[NodesGroups[i][j],list(NodesWitoutCS-set([NodesGroups[i][0],j]))])
+                    MaxEnergy += np.mean(NominalPlan.NodesEnergyTravel[NodesGroups[i][j],list(NodesWitoutCS-set([NodesGroups[i][0],j]))])
                 
                 NumberOfMaxCS = MaxEnergy + NominalPlan.BatteryCapacity
-                NumOfCS = np.round(min(max(2.0,-NumberOfMaxCS/NominalPlan.BatteryCapacity),len(NominalPlan.ChargingStations)))
+                NumOfCS = np.round(min(max(1.0,-NumberOfMaxCS/NominalPlan.BatteryCapacity),len(NominalPlan.ChargingStations)))
 
                 CS_list = []
                 for j in range(int(NumOfCS)):
@@ -438,7 +481,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                                         TimeFromNodesToCS[iNode] = TimeFromNodesToCS[iNode]
                         if j>0 and np.any(TimeFromNodesToCS==NodesTimeOfTravel[NodesList,NominalPlan.ChargingStations[iCS]])==False:
                             continue
-                        MeanTimeToCS[iCS] = np.linalg.norm(TimeFromNodesToCS,ord=2)
+                        MeanTimeToCS[iCS] = np.linalg.norm(TimeFromNodesToCS,ord=1)
 
                     j_CS = np.argsort(MeanTimeToCS)
                     if MeanTimeToCS[j_CS[0]] == np.inf:
@@ -725,8 +768,7 @@ def PlotGraph(iCar: list, NodesGroups: list, NodesTrajectory: list, Time: list, 
             plt.plot(UncertainTime[0:indx,m],'-.',color=colr)
 
 
-def AddChargingStations(NominalPlan: DataTypes.NominalPlanning, i):
-    iCS = NominalPlan.ChargingStations[i]
+def AddChargingStations(NominalPlan: DataTypes.NominalPlanning, iCS):
     N = NominalPlan.N
     NominalPlan.NodesTimeOfTravel = np.block([[NominalPlan.NodesTimeOfTravel, NominalPlan.NodesTimeOfTravel[:,iCS].reshape(N,1)],[NominalPlan.NodesTimeOfTravel[iCS,:].reshape(1,N), 999.0*np.ones((1,1))]])
     NominalPlan.NodesEnergyTravel = np.block([[NominalPlan.NodesEnergyTravel, NominalPlan.NodesEnergyTravel[:,iCS].reshape(N,1)],[NominalPlan.NodesEnergyTravel[iCS,:].reshape(1,N), 999.0*np.ones((1,1))]])
@@ -737,8 +779,9 @@ def AddChargingStations(NominalPlan: DataTypes.NominalPlanning, i):
     NominalPlan.ChargingStations = np.append(NominalPlan.ChargingStations, N)
     NominalPlan.NodesPosition = np.vstack([NominalPlan.NodesPosition, NominalPlan.NodesPosition[iCS,:].reshape(1,2)])
     NominalPlan.N = N+1
-    NominalPlan.NodesRealNames.append(NominalPlan.NodesRealNames[iCS])
+    NominalPlan.NodesRealNames = np.append(NominalPlan.NodesRealNames, N)
     NominalPlan.NumberOfChargeStations += 1
+    i = np.where(NominalPlan.ChargingStations == iCS)[0][0]
     NominalPlan.ChargingProfile.append(NominalPlan.ChargingProfile[i])
     NominalPlan.ChargingRateProfile.append(NominalPlan.ChargingRateProfile[i])
     NominalPlan.LoadDemand = np.append(NominalPlan.LoadDemand, NominalPlan.LoadDemand[iCS])
@@ -947,3 +990,202 @@ def LoadScenarioFileXml(ScenarioFileName: str, NominalPlan: DataTypes.NominalPla
 
     OptVal = 0.0
     return NominalPlan, PltParams, OptVal
+
+
+
+def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, SolverType, iplot = False ):
+# Calculate the Trajectory Time and Energy:
+    NumberOfCars = NodesTrajectory.shape[1]
+    ScenarioFileName = NominalPlan.ScenarioFileName
+    NodesGroups = []
+    for i in range(NumberOfCars):
+        NodesGroups.append(np.unique(NodesTrajectory[:,i]).tolist())
+    
+    TimeVec = np.zeros((NominalPlan.N+1,NumberOfCars))
+    Energy =np.zeros((NominalPlan.N+1,NumberOfCars)); Energy[0,:] = PltParams.BatteryCapacity
+    EnergySigma2 =np.zeros((NominalPlan.N+1,NumberOfCars)); EnergySigma2[0,:] = 0
+    TimeSigma2 =np.zeros((NominalPlan.N+1,NumberOfCars)); EnergySigma2[0,:] = 0
+    RemainingLoad = np.zeros((NominalPlan.N+1,NumberOfCars))
+    a1 = PltParams.BatteryCapacity/PltParams.FullRechargeRateFactor
+    a2 = PltParams.FullRechargeRateFactor*NominalPlan.StationRechargePower/PltParams.BatteryCapacity
+    for m in range(NumberOfCars):
+        i = 0
+        RemainingLoad[i,:] = PltParams.LoadCapacity
+        while NodesTrajectory[i,m] >= NominalPlan.NumberOfDepots or i==0:
+            TimeVec[i+1,m] = TimeVec[i,m] + NominalPlan.NodesTimeOfTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + ChargingTime[NodesTrajectory[i,m],m]
+            RemainingLoad[i+1,m] = RemainingLoad[i,m] - NominalPlan.LoadDemand[NodesTrajectory[i,m]]
+            if PltParams.RechargeModel == 'ConstantRate':
+                Energy[i+1,m] = Energy[i,m] + NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + NominalPlan.StationRechargePower*ChargingTime[NodesTrajectory[i+1,m],m]
+                EnergySigma2[i+1,m] = EnergySigma2[i,m] + NominalPlan.NodesEnergyTravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]**2
+                TimeSigma2[i+1,m] = TimeSigma2[i,m] + NominalPlan.TravelSigma[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]**2
+            else:
+                Energy[i+1,m] = NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]] + (a1 + (Energy[i,m]-a1)*np.exp(-a2*ChargingTime[NodesTrajectory[i,m],m]))
+            i += 1
+    EnergySigma = np.sqrt(EnergySigma2)
+    TimeSigma = np.sqrt(TimeSigma2)
+    UncertainEnergy = Energy - NominalPlan.EnergyAlpha*EnergySigma
+    UncertainTime = TimeVec + NominalPlan.TimeAlpha*TimeSigma
+
+    while np.sum(NodesTrajectory[-2,:]) < NominalPlan.NumberOfDepots:
+        NodesTrajectory = NodesTrajectory[:-1,:]
+        TimeVec = TimeVec[:-1,:]
+        RemainingLoad = RemainingLoad[:-1,:]
+        Energy = Energy[:-1,:]
+        EnergySigma = EnergySigma[:-1,:]
+        TimeSigma = TimeSigma[:-1,:]
+        UncertainEnergy = UncertainEnergy[:-1,:]
+        UncertainTime = UncertainTime[:-1,:]
+    
+    FinalCost = np.sum(np.max(TimeVec, axis=0)) + NominalPlan.TimeAlpha*np.sqrt(np.sum(np.max(TimeSigma**2, axis=0)))
+    Customers = set(range(NominalPlan.NumberOfDepots,NominalPlan.N)) - set(NominalPlan.ChargingStations)
+    for m in range(NumberOfCars):
+        Customers = Customers - set(NodesTrajectory[:,m].tolist())
+
+    if len(Customers) > 0:
+        print('Not all customers were visited: ', Customers)
+        exit()
+
+
+    print(SolverType+' Trajectory Time = ', np.sum(np.max(TimeVec+NominalPlan.TimeAlpha*TimeSigma, axis=0)))
+    print("Final Cost = ", FinalCost)
+    for i in range(NumberOfCars):
+        iDepot = np.argwhere(NodesTrajectory[:,i] < NominalPlan.NumberOfDepots)[1]
+        print('Car ', i, ' Trajectory: ', NodesTrajectory[:,i].T,' Cost: {:4.2f}'.format(TimeVec[iDepot[0],i]), ', Remaining Load: ', RemainingLoad[iDepot[0],i], ', Min Energy Along Traj: ',"{:.2f}".format(np.min(UncertainEnergy[:,i])))
+
+    SolGap = 0
+    if NominalPlan.OptVal > 0:
+        SolGap = (FinalCost-NominalPlan.OptVal)/NominalPlan.OptVal*100
+        print('Solution Gap [%]= {:4.2f}'.format(SolGap))
+
+
+        ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
+        path = os.path.join("Results", ScenarioName) 
+        os.makedirs(path, exist_ok=True)
+
+    if iplot == False:
+        return FinalCost
+
+    col_vec = ['m','y','b','r','g','c','k']
+    markers = ['o','s','^','v','<','>','*']
+    imarkers = 0
+    plt.figure()
+    plt.subplot(3,1,(1,2))
+    leg_str = []
+    legi = np.zeros((NumberOfCars,), dtype=object)
+    plt.plot(NominalPlan.NodesPosition[0,0].T,NominalPlan.NodesPosition[0,1].T,'o',linewidth=20, color='k')
+    for m in range(NumberOfCars):
+        if 0 == i%len(col_vec) and i>0:
+            imarkers += 1
+        NodesToPlot = list(set(NodesGroups[m][1:])-set(NominalPlan.ChargingStations))
+        plt.plot(NominalPlan.NodesPosition[NodesToPlot,0].T,NominalPlan.NodesPosition[NodesToPlot,1].T,markers[imarkers%len(markers)],linewidth=10, color=col_vec[m%len(col_vec)])
+    plt.plot(NominalPlan.NodesPosition[NominalPlan.ChargingStations,0].T,NominalPlan.NodesPosition[NominalPlan.ChargingStations,1].T,'x',linewidth=50, color='k')
+    plt.grid('on')
+    plt.xlim((NominalPlan.Xmin,NominalPlan.Xmax))
+    plt.ylim((NominalPlan.Ymin,NominalPlan.Ymax))
+    # if N<=10:
+    #     for i in range(N):
+    #         for j in range(i+1,N):
+    #             plt.arrow(0.5*(NodesPosition[i,0]+NodesPosition[j,0]),0.5*(NodesPosition[i,1]+NodesPosition[j,1]),0.5*(NodesPosition[j,0]-NodesPosition[i,0]),0.5*(NodesPosition[j,1]-NodesPosition[i,1]), width= 0.01)
+    #             plt.arrow(0.5*(NodesPosition[i,0]+NodesPosition[j,0]),0.5*(NodesPosition[i,1]+NodesPosition[j,1]),-0.5*(NodesPosition[j,0]-NodesPosition[i,0]),-0.5*(NodesPosition[j,1]-NodesPosition[i,1]), width= 0.01)
+    for i in range(NominalPlan.N):
+        colr = 'r' if i<NominalPlan.NumberOfDepots else 'c'
+        if i in NominalPlan.ChargingStations: colr = 'g'
+        plt.text(NominalPlan.NodesPosition[i,0]+1,NominalPlan.NodesPosition[i,1]+1,"{:}".format(i), color=colr,fontsize=20)
+    for m in range(NominalPlan.NumberOfCars):
+        colr = col_vec[m%len(col_vec)]
+        for i in range(0,len(NodesTrajectory)-1):
+            j1 = NodesTrajectory[i,m]
+            j2 = NodesTrajectory[i+1,m]
+            if (NominalPlan.ReturnToBase==True and j1 >= 0) or (NominalPlan.ReturnToBase==False and j2>=0) or i==0:
+                legi[m] = plt.arrow(NominalPlan.NodesPosition[j1,0],NominalPlan.NodesPosition[j1,1],NominalPlan.NodesPosition[j2,0]-NominalPlan.NodesPosition[j1,0],NominalPlan.NodesPosition[j2,1]-NominalPlan.NodesPosition[j1,1], width= 0.5, color=colr)
+                # plt.text(0.5*NodesPosition[j1,0]+0.5*NodesPosition[j2,0], 1+0.5*NodesPosition[j1,1]+0.5*NodesPosition[j2,1]+4,"({:2.3},{:2.2})".format(NominalPlan.NodesTimeOfTravel[j1,j2], NominalPlan.NodesEnergyTravelSigma[j1,j2]), color='r', fontsize=10)
+                # plt.text(0.5*NodesPosition[j1,0]+0.5*NodesPosition[j2,0], 1+0.5*NodesPosition[j1,1]+0.5*NodesPosition[j2,1]-4,"({:2.3},{:2.2})".format(NominalPlan.NodesEnergyTravel[j1,j2], NominalPlan.NodesEnergyTravelSigma[j1,j2]), color='b', fontsize=10)
+            if j2 < NominalPlan.NumberOfDepots:
+                break
+        if np.max(NodesTrajectory[:,m])>0:
+            indx = np.argwhere(NodesTrajectory[:,m] > NominalPlan.NumberOfDepots)
+            indx = indx[-1][0] if NominalPlan.ReturnToBase==False else indx[-1][0]+2
+        else:
+            indx = 2
+        leg_str.append('Car '+str(m+1)+" Number of Nodes: {}".format(indx-2))
+
+    # plt.legend(legi,leg_str)
+    plt.title("Cost is "+"{:.2f}".format(FinalCost)+", Solution Gap: {:4.2f}".format(SolGap)+"%")
+    plt.subplot(3,1,3)
+    leg_str = []
+    for m in range(NominalPlan.NumberOfCars):
+        colr = col_vec[m%len(col_vec)]
+        if np.max(NodesTrajectory[:,m])>0:
+            indx = np.argwhere(NodesTrajectory[:,m] > NominalPlan.NumberOfDepots)
+            indx = indx[-1][0] if NominalPlan.ReturnToBase==False else indx[-1][0]+2
+        else:
+            indx = 0
+        plt.plot(Energy[0:indx,m],'o-',color=colr)
+        leg_str.append('Car '+str(m+1)+' Mean Time: '+"{:.2f}".format(np.max(TimeVec[:,m]))+' Cost Time: '+"{:.2f}".format(np.max(UncertainTime[:,m])))
+        for i in range(indx):
+            plt.text(i,Energy[i,m]+0.1,"{:}".format(NodesTrajectory[i,m]), color=colr,fontsize=20)
+        for i in range(0,indx-1):
+            plt.text(i+0.5,0.5*Energy[i,m]+0.5*Energy[i+1,m]+0.1,"{:.3}".format(NominalPlan.NodesEnergyTravel[NodesTrajectory[i,m],NodesTrajectory[i+1,m]]), color='c',fontsize=10)
+    plt.grid('on')
+    plt.ylim((0,PltParams.BatteryCapacity))
+    plt.legend(leg_str, loc='upper right')
+    plt.ylabel('Energy')
+    for m in range(NominalPlan.NumberOfCars):
+        colr = col_vec[m%len(col_vec)]
+        if np.max(NodesTrajectory[:,m])>0:
+            indx = np.argwhere(NodesTrajectory[:,m] > NominalPlan.NumberOfDepots)
+            indx = indx[-1][0] if NominalPlan.ReturnToBase==False else indx[-1][0]+2
+        else:
+            indx = 0
+        plt.plot(UncertainEnergy[0:indx,m],'-.',color=colr)
+        # plt.plot(EnergyExitingNodes[NodesTrajectory[:,m]],'x:',color='k')
+        
+
+        for i in range(NominalPlan.NumberOfChargeStations):
+            j = NominalPlan.ChargingStations[i]
+            indx = np.where(NodesTrajectory[:,m] == j)
+            if indx[0].shape[0]>0 and ChargingTime[j,m] > 0:
+                if PltParams.RechargeModel == 'ConstantRate':
+                    Engery_i = ChargingTime[j,m]*NominalPlan.StationRechargePower
+                else:
+                    Engery_i = a1 + (Energy[indx[0][0],indx[1][0]]-a1)*np.exp(-a2*ChargingTime[j,m])
+                plt.arrow(indx[0][0],0,0,max(Engery_i,1.0), color=colr, width= 0.1)
+                plt.text(indx[0][0]+0.2,5+i*5,"{:.2f}".format(Engery_i), color=colr,fontsize=20)
+    plt.xlabel('Nodes')
+    FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(NominalPlan.MaxNodesToSolver)+"Method"+str(NominalPlan.ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)
+    if ScenarioFileName is not None:
+        ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
+        plt.savefig("Results//"+ScenarioName+"//"+FileName+'.png', dpi=300)
+    else:
+        plt.savefig("Results//Nodes_"+FileName+'.png', dpi=300)
+
+
+    with open("Results//"+ScenarioName+"//"+FileName+'.txt', 'w') as f:
+        f.write('Solver Type: '+SolverType+'\n')
+        f.write('Solving Time: '+str(time.time()-NominalPlan.t)+'\n')
+        f.write('N: '+str(NominalPlan.N)+'\n')
+        f.write('Cars: '+str(NominalPlan.NumberOfCars)+'\n')
+        f.write('Clustering Method: '+str(NominalPlan.ClusteringMethod)+'\n')
+        f.write('Recharge Model: '+str(PltParams.RechargeModel)+'\n')
+        f.write('Cost: '+str(FinalCost)+'\n')
+        f.write('Solution Gap: '+str(SolGap)+'\n')
+        f.write('Charging Stations: '+str(NominalPlan.ChargingStations)+'\n')
+        for m in range(NominalPlan.NumberOfCars):
+            f.write('Car '+str(m+1)+', Cost = {:4.2f}'.format(np.max(TimeVec[:,m]))+' Trajectory Node: '+str(NodesTrajectory[:,m].T))
+            f.write('\n')
+        for m in range(NominalPlan.NumberOfCars):
+            f.write('Car '+str(m+1)+' Time: '+str(TimeVec[:,m].T))
+            f.write('\n')
+        for m in range(NominalPlan.NumberOfCars):
+            f.write('Car '+str(m+1)+' Energy: '+str(Energy[:,m].T))
+            f.write('\n')
+        for m in range(NominalPlan.NumberOfCars):
+            f.write('Car '+str(m+1)+' Uncertain Time: '+str(UncertainTime[:,m].T))
+            f.write('\n')
+        for m in range(NominalPlan.NumberOfCars):
+            f.write('Car '+str(m+1)+' UncertainEnergy: '+str(UncertainEnergy[:,m].T))
+            f.write('\n')
+
+        f.close()
+
+        return FinalCost

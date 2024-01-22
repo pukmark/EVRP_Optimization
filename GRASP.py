@@ -29,8 +29,8 @@ def greedyRandomConstruction(NominalPlan: SimDataTypes.NominalPlanning):
     return Traj
 
 def repairCapacityTraj(Traj, NominalPlan):
-    CurLoad = NominalPlan.LoadCapacity
     for iCar in range(len(Traj)):
+        CurLoad = NominalPlan.LoadCapacity
         Traj_CVRP = [Traj[iCar][0]]
         for iNode in range(1,len(Traj[iCar])):
             CurLoad -= NominalPlan.LoadDemand[Traj[iCar][iNode]]
@@ -113,7 +113,7 @@ def verifyEnergyTraj(Traj, NominalPlan):
 def GRASP(NominalPlan: SimDataTypes.NominalPlanning):
     Traj_Best = []
     Cost_Best = np.inf
-    for i in range(0, 10000):
+    for i in range(0, 20000):
         Traj = greedyRandomConstruction(NominalPlan)
         Traj = repairCapacityTraj(Traj, NominalPlan)
         Traj = repairEnergyTraj(Traj, NominalPlan)
