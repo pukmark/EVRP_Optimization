@@ -6,6 +6,7 @@ from copy import deepcopy
 import itertools
 import xmltodict as xml
 import os
+import matplotlib as mpl
 
 
 def normalize(x):
@@ -460,7 +461,7 @@ def DivideNodesToGroups(NominalPlan: DataTypes.NominalPlanning ,
                     MaxEnergy += np.mean(NominalPlan.NodesEnergyTravel[NodesGroups[i][j],list(NodesWitoutCS-set([NodesGroups[i][0],j]))])
                 
                 NumberOfMaxCS = MaxEnergy + NominalPlan.BatteryCapacity
-                NumOfCS = np.round(min(max(1.0,-NumberOfMaxCS/NominalPlan.BatteryCapacity),len(NominalPlan.ChargingStations)))
+                NumOfCS = np.round(min(max(2,-NumberOfMaxCS/NominalPlan.BatteryCapacity),len(NominalPlan.ChargingStations)))
 
                 CS_list = []
                 for j in range(int(NumOfCS)):
@@ -532,7 +533,7 @@ def CreateSubPlanFromPlan (NominalPlan: DataTypes.NominalPlanning, NodesGroups):
     NominalPlanGroup.SolutionProbabilityEnergyReliability = NominalPlan.SolutionProbabilityEnergyReliability
     NominalPlanGroup.CostFunctionType = NominalPlan.CostFunctionType
     NominalPlanGroup.MaxTotalTimePerVehicle = NominalPlan.MaxTotalTimePerVehicle
-    NominalPlanGroup.NumberOfChargeStations = NominalPlan.NumberOfChargeStations
+    NominalPlanGroup.NumberOfChargeStations = len(NominalPlan.ChargingProfile)
     NominalPlanGroup.EnergyAlpha = NominalPlan.EnergyAlpha
     NominalPlanGroup.TimeAlpha = NominalPlan.TimeAlpha
     NominalPlanGroup.InitialChargeStage = NominalPlan.InitialChargeStage
@@ -1065,9 +1066,26 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
     if iplot == False:
         return FinalCost
 
-    col_vec = ['m','y','b','r','g','c','k']
+    col_vec = ['m','k','b','r','y','g','c']
     markers = ['o','s','^','v','<','>','*']
     imarkers = 0
+    # Plots params
+# sns.set_style('whitegrid')
+    mpl.rcParams['figure.dpi'] = 100
+    # mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['font.family'] = 'serif'
+
+    plt.rcParams['axes.labelsize'] = 18
+    plt.rcParams['axes.titlesize'] = 18
+    plt.rcParams['xtick.labelsize'] = 16
+    plt.rcParams['ytick.labelsize'] = 16
+    text_and_line_color = 'k'
+    plt.rcParams['text.color'] = text_and_line_color
+    plt.rcParams['axes.labelcolor'] = text_and_line_color
+    plt.rcParams['xtick.color'] = text_and_line_color
+    plt.rcParams['ytick.color'] = text_and_line_color
+    plt.rcParams['axes.edgecolor'] = text_and_line_color
+
     plt.figure()
     plt.subplot(3,1,(1,2))
     leg_str = []
@@ -1082,11 +1100,6 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
     plt.grid('on')
     plt.xlim((NominalPlan.Xmin,NominalPlan.Xmax))
     plt.ylim((NominalPlan.Ymin,NominalPlan.Ymax))
-    # if N<=10:
-    #     for i in range(N):
-    #         for j in range(i+1,N):
-    #             plt.arrow(0.5*(NodesPosition[i,0]+NodesPosition[j,0]),0.5*(NodesPosition[i,1]+NodesPosition[j,1]),0.5*(NodesPosition[j,0]-NodesPosition[i,0]),0.5*(NodesPosition[j,1]-NodesPosition[i,1]), width= 0.01)
-    #             plt.arrow(0.5*(NodesPosition[i,0]+NodesPosition[j,0]),0.5*(NodesPosition[i,1]+NodesPosition[j,1]),-0.5*(NodesPosition[j,0]-NodesPosition[i,0]),-0.5*(NodesPosition[j,1]-NodesPosition[i,1]), width= 0.01)
     for i in range(NominalPlan.N):
         colr = 'r' if i<NominalPlan.NumberOfDepots else 'c'
         if i in NominalPlan.ChargingStations: colr = 'g'
@@ -1098,8 +1111,6 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
             j2 = NodesTrajectory[i+1,m]
             if (NominalPlan.ReturnToBase==True and j1 >= 0) or (NominalPlan.ReturnToBase==False and j2>=0) or i==0:
                 legi[m] = plt.arrow(NominalPlan.NodesPosition[j1,0],NominalPlan.NodesPosition[j1,1],NominalPlan.NodesPosition[j2,0]-NominalPlan.NodesPosition[j1,0],NominalPlan.NodesPosition[j2,1]-NominalPlan.NodesPosition[j1,1], width= 0.5, color=colr)
-                # plt.text(0.5*NodesPosition[j1,0]+0.5*NodesPosition[j2,0], 1+0.5*NodesPosition[j1,1]+0.5*NodesPosition[j2,1]+4,"({:2.3},{:2.2})".format(NominalPlan.NodesTimeOfTravel[j1,j2], NominalPlan.NodesEnergyTravelSigma[j1,j2]), color='r', fontsize=10)
-                # plt.text(0.5*NodesPosition[j1,0]+0.5*NodesPosition[j2,0], 1+0.5*NodesPosition[j1,1]+0.5*NodesPosition[j2,1]-4,"({:2.3},{:2.2})".format(NominalPlan.NodesEnergyTravel[j1,j2], NominalPlan.NodesEnergyTravelSigma[j1,j2]), color='b', fontsize=10)
             if j2 < NominalPlan.NumberOfDepots:
                 break
         if np.max(NodesTrajectory[:,m])>0:
@@ -1108,9 +1119,12 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
         else:
             indx = 2
         leg_str.append('Car '+str(m+1)+" Number of Nodes: {}".format(indx-2))
-
+        # plt.axis('equal')
     # plt.legend(legi,leg_str)
-    plt.title("Cost is "+"{:.2f}".format(FinalCost)+", Solution Gap: {:4.2f}".format(SolGap)+"%")
+    if SolGap > 0.0:
+        plt.title("Cost is "+"{:.2f}".format(FinalCost)+", Solution Gap: {:4.2f}".format(SolGap)+"%")
+    else:
+        plt.title("Tour Map - Depots:"+str(np.unique(NominalPlan.CarsInDepots).tolist())+", Vehicles:"+str(NominalPlan.NumberOfCars)+", Charging Stations:"+str(NominalPlan.ChargingStations), fontsize=20)
     plt.subplot(3,1,3)
     leg_str = []
     for m in range(NominalPlan.NumberOfCars):
@@ -1121,7 +1135,7 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
         else:
             indx = 0
         plt.plot(Energy[0:indx,m],'o-',color=colr)
-        leg_str.append('Car '+str(m+1)+' Mean Time: '+"{:.2f}".format(np.max(TimeVec[:,m]))+' Cost Time: '+"{:.2f}".format(np.max(UncertainTime[:,m])))
+        # leg_str.append('Car '+str(m+1)+' Mean Tour Time: '+"{:.2f}".format(np.max(TimeVec[:,m]))+', 90% Tour Time: '+"{:.2f}".format(np.max(UncertainTime[:,m])))
         for i in range(indx):
             plt.text(i,Energy[i,m]+0.1,"{:}".format(NodesTrajectory[i,m]), color=colr,fontsize=20)
         for i in range(0,indx-1):
@@ -1129,7 +1143,7 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
     plt.grid('on')
     plt.ylim((0,PltParams.BatteryCapacity))
     plt.legend(leg_str, loc='upper right')
-    plt.ylabel('Energy')
+    plt.ylabel('SOC', fontsize=20)
     for m in range(NominalPlan.NumberOfCars):
         colr = col_vec[m%len(col_vec)]
         if np.max(NodesTrajectory[:,m])>0:
@@ -1138,9 +1152,7 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
         else:
             indx = 0
         plt.plot(UncertainEnergy[0:indx,m],'-.',color=colr)
-        # plt.plot(EnergyExitingNodes[NodesTrajectory[:,m]],'x:',color='k')
         
-
         for i in range(NominalPlan.NumberOfChargeStations):
             j = NominalPlan.ChargingStations[i]
             indx = np.where(NodesTrajectory[:,m] == j)
@@ -1151,8 +1163,10 @@ def CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, 
                     Engery_i = a1 + (Energy[indx[0][0],indx[1][0]]-a1)*np.exp(-a2*ChargingTime[j,m])
                 plt.arrow(indx[0][0],0,0,max(Engery_i,1.0), color=colr, width= 0.1)
                 plt.text(indx[0][0]+0.2,5+i*5,"{:.2f}".format(Engery_i), color=colr,fontsize=20)
-    plt.xlabel('Nodes')
+    plt.xlabel('Nodes Visited Along The Tour', fontsize=20)
     FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(NominalPlan.MaxNodesToSolver)+"Method"+str(NominalPlan.ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)
+    figManager = plt.get_current_fig_manager()
+    figManager.window.showMaximized()
     if ScenarioFileName is not None:
         ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
         plt.savefig("Results//"+ScenarioName+"//"+FileName+'.png', dpi=300)

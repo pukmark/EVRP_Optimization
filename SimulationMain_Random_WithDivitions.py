@@ -8,10 +8,9 @@ from RecursiveOptimalSolution_ChargingStations import *
 import os
 import time
 import seaborn as sns
+import matplotlib as mpl
 
 os.system('cls' if os.name == 'nt' else 'clear')
-
-
 
 
 def main(iSeed=10, iplot = 0):
@@ -24,7 +23,7 @@ def main(iSeed=10, iplot = 0):
     #############################$
     ScenarioFileNames = []
 
-    ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n22-k4.evrp')
+    # ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n22-k4.evrp')
     # ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n23-k3.evrp')
     # ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n30-k3.evrp')
     # ScenarioFileNames.append('./VRP_Instances/evrp-benchmark-set/E-n33-k4.evrp')
@@ -53,8 +52,8 @@ def main(iSeed=10, iplot = 0):
     except:
         pass
 
-    N = 150
-    CarsInDepots = [0,0,1,1,1,2,2,2] # Number of Cars per depot
+    N = 22
+    CarsInDepots = [0,0,1] # Number of Cars per depot
     NumberOfCars = len(CarsInDepots)
     NumberOfDepots = len(np.unique(CarsInDepots))
     MaxNumberOfNodesPerCar = int(3.0*(N-NumberOfDepots)/(NumberOfCars)) if NumberOfCars > 1 else N
@@ -63,8 +62,8 @@ def main(iSeed=10, iplot = 0):
     PltParams.LoadCapacity = 100
     SolutionProbabilityTimeReliability = 0.9
     SolutionProbabilityEnergyReliability = 0.999
-    DeterministicProblem = False
-    MinLoadPerNode, MaxLoadPerNode = 5, 20
+    DeterministicProblem = 0
+    MinLoadPerNode, MaxLoadPerNode = 10, 20
     MaxMissionTime = 120
     ReturnToBase = True
     MustVisitAllNodes = True
@@ -72,7 +71,7 @@ def main(iSeed=10, iplot = 0):
     MaxTotalTimePerVehicle  = 200.0
     PltParams.RechargeModel = 'ConstantRate' # 'ExponentialRate' or 'ConstantRate'
     SolverType = 'Recursive' # 'Gurobi' or 'Recursive' or 'Gurobi_NoClustering' or 'GRASP'
-    ClusteringMethod = "Sum_AbsEigenvalue" # "Max_EigenvalueN" or "Frobenius" or "Sum_AbsEigenvalue" or "SumSqr_AbsEigenvalue" or "Mean_MaxRow" or "PartialMax_Eigenvalue" or "Greedy_Method"
+    ClusteringMethod = "Max_EigenvalueN" # "Max_EigenvalueN" or "Frobenius" or "Sum_AbsEigenvalue" or "SumSqr_AbsEigenvalue" or "Mean_MaxRow" or "PartialMax_Eigenvalue" or "Greedy_Method"
     MaxCalcTimeFromUpdate = 10.0 # Max time to calculate the solution from the last update [sec]
     SolveAlsoWithGurobi = 1
     ##############################$
@@ -94,8 +93,8 @@ def main(iSeed=10, iplot = 0):
         # Platform Parameters:
         PltParams.Vmax = 10 # Platform Max Speed
         PltParams.MinVelReductionCoef, PltParams.MaxVelReductionCoef = 0.0, 0.75 # min/max speed reduction factor for node2node travel
-        PltParams.VelEnergyConsumptionCoef = 0.04 # Power consumption due to velocity = VelEnergyConsumptionCoef* Vel^2
-        PltParams.VelConstPowerConsumption = 0.04
+        PltParams.VelEnergyConsumptionCoef = 0.047 # Power consumption due to velocity = VelEnergyConsumptionCoef* Vel^2
+        PltParams.VelConstPowerConsumption = 0.05
         ## Total Power to travel From Node i to Node J = (ConstPowerConsumption + VelEnergyConsumptionCoef* Vel^2)*Time_i2j
         PltParams.MinPowerConsumptionPerTask, PltParams.MaxPowerConsumptionPerTask = 2, 10
         PltParams.MinTimePerTask, PltParams.MaxTimePerTask = 1, 5
@@ -260,7 +259,7 @@ def main(iSeed=10, iplot = 0):
         else:
             # Divide the nodes to groups (Clustering)
             while True:
-                NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, ClusterSubGroups=False, isplot=iplot>=1)
+                NodesGroups = DivideNodesToGroups(deepcopy(NominalPlan), ClusteringMethod, MaxGroupSize=MaxNumberOfNodesPerCar, ClusterSubGroups=False, isplot=iplot>=2)
                 if len(NodesGroups) == 0:
                     print('Can"t find initial solution for this problem. Adding more trucks... ', NumberOfCars+1)
                     # add more trucks:
@@ -270,13 +269,6 @@ def main(iSeed=10, iplot = 0):
                     NominalPlan.CarsInDepots = np.append(NominalPlan.CarsInDepots, 0)
                     continue
                 break
-            if ScenarioFileName == 'RandomScenario':
-                for ii in range(len(NodesGroups)):
-                    for jj in range(ii,len(NodesGroups)):
-                        if ii==jj: continue
-                        if np.any(np.isin(NodesGroups[ii][1:], NodesGroups[jj][1:])):
-                            print('Error in Clustering')
-                            return 0.0, 0.0, 0.0, 0.0
 
             NodesTrajectory = np.zeros((N+1,M), dtype=int)
             EnergyEnteringNodes = np.zeros((N,))
@@ -296,7 +288,7 @@ def main(iSeed=10, iplot = 0):
                                                                 ClusteringMethod,
                                                                 ClusterSubGroups=True,
                                                                 MaxGroupSize = MaxNodesToSolver,
-                                                                isplot=iplot>=2)
+                                                                isplot=iplot>=3)
                     for iSubGroup in range(NumSubGroups):
                         NodesSubGroups.append([NodesGroups[Ncar][i] for i in NodesSubGroups_unindexed[iSubGroup]])
                 else:
@@ -391,7 +383,7 @@ def main(iSeed=10, iplot = 0):
                                                                                     MaxCalcTimeFromUpdate = MaxCalcTimeFromUpdate)
                         
                             if BestPlan.Cost == np.inf:
-                                # return 0.0, 0.0, 0.0, 0.0
+                                # .0, 0.0, 0.0, 0.0
                                 if NextNode in NominalSubPlanGroup.ChargingStations:
                                     InitTraj = []
                                     NextNode = 0
@@ -457,8 +449,23 @@ def main(iSeed=10, iplot = 0):
         FinalCost = CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory, ChargingTime, SolverType, iplot=iplot>=0)
             
         CalcTime_Gurobi = 0.0
+        FinalCost_Grobi = 0.0
         if SolveAlsoWithGurobi == True:
+
+            for ii in range(NodesTrajectory.shape[1]):
+                indx_ii = np.argwhere(NodesTrajectory[:,ii] >= NominalPlan.NumberOfDepots).reshape(-1,)
+                for jj in range(ii,NodesTrajectory.shape[1]):
+                    if ii==jj: continue
+                    indx_jj = np.argwhere(NodesTrajectory[:,jj] >= NominalPlan.NumberOfDepots).reshape(-1,)
+                    if np.any(np.isin(NodesTrajectory[indx_ii,ii], NodesTrajectory[indx_jj,jj])):
+                        print('Error in Clustering')
+                        return 0.0, 0.0, 0.0, 0.0
+
+
             t1 = time.time()
+
+            # InitGuess = np.array([[0, 6, 1, 2, 29, 5, 7, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 13, 11, 4, 3, 25, 8, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 16, 19, 21, 22, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 17, 26, 20, 18, 15, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]).T
+            # InitGuess = np.array([[0, 9, 7, 5, 2, 1, 29, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 12, 27, 15, 18, 20, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 13, 11, 4, 3, 25, 6, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 16, 19, 21, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]).T
             NodesTrajectory_Gurobi, Cost_Gurobi, EnergyEnteringNodes_Gurobi, ChargingTime_Gurobi, EnergyExitingNodes_Gurobi = SolveGurobi_Convex_MinMax(PltParams=PltParams,
                                                                 NominalPlan= NominalPlan,
                                                                 MaxCalcTimeFromUpdate= 200,
@@ -467,17 +474,17 @@ def main(iSeed=10, iplot = 0):
 
             print('Gurobi Trajectory Time = ', Cost_Gurobi)
             print('Gurobi Trajectory = ', NodesTrajectory_Gurobi.T.tolist())
-            FinalCost_Grobi = CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory_Gurobi, ChargingTime_Gurobi, 'Gurobi_NoClustering', iplot=iplot>=1)
+            FinalCost_Grobi = CheckAndPlotSolution(NominalPlan, PltParams, NodesTrajectory_Gurobi, ChargingTime_Gurobi, 'Gurobi_NoClustering', iplot=iplot>=0)
             CalcTime_Gurobi = time.time()-t1
 
     if DeterministicProblem == True:
         plt.show()
         exit()
-    return FinalCost, FinalCost_Grobi, CalcTime, CalcTime_Gurobi
+    # return FinalCost, FinalCost_Grobi, CalcTime, CalcTime_Gurobi
 
     ############################################################################################################
     # Run Monte-Carlo Simulation for solution:
-    Nmc = 50000
+    Nmc = 10000 # 200000
     FinalTime = np.zeros((Nmc,NumberOfCars))
     MinEnergyLevel = np.zeros((Nmc,NumberOfCars))
     for n in range(Nmc):
@@ -502,34 +509,47 @@ def main(iSeed=10, iplot = 0):
         indx = int(SolutionProbabilityTimeReliability*Nmc)
         print('Car '+str(m+1)+' '+str(SolutionProbabilityTimeReliability*100)+'% Lap Time: '+"{:.2f}".format(sorted[indx])+', '+str(95)+'% Lap Time: '+"{:.2f}".format(sorted[int(0.95*Nmc)]))
         print('Car '+str(m+1)+' Has a '+"{:.2f}".format(100*np.sum(MinEnergyLevel[:,m]<0)/Nmc)+'% chance of running out of energy')
-        leg_str1.append('Car '+' '+str(SolutionProbabilityTimeReliability*100)+'% Lap Time: '+"{:.2f}".format(sorted[indx])+', '+str(95)+'% Lap Time: '+"{:.2f}".format(sorted[int(0.95*Nmc)]))
-        leg_str2.append('Car '+str(m+1)+' Has a '+"{:.2f}".format(100*np.sum(MinEnergyLevel[:,m]<0)/Nmc)+'% chance of running out of energy')
+        leg_str1.append(str(SolutionProbabilityTimeReliability*100)+'% Lap Time: '+"{:.2f}".format(sorted[indx]))
+        leg_str2.append("{:.1f}".format(100*np.sum(MinEnergyLevel[:,m]<0)/Nmc)+'% running out of energy')
 
-    col_vec = ['m','y','b','r','g','c','k']
+    col_vec = ['m','k','b','r','y','g','c']
     markers = ['o','s','^','v','<','>','*']
     plt.figure()
     plt.subplot(2,1,1)
     for m in range(NumberOfCars):
         colr = col_vec[m%len(col_vec)]
-        sns.kdeplot(FinalTime[:,m],color=colr, cumulative=True)
-    plt.legend(leg_str1)
+        sns.kdeplot(FinalTime[:,m],color=colr, cumulative=True, linewidth=4)
+    plt.legend(leg_str1, fontsize=20)
     plt.grid('on')
-    plt.ylabel('Time')
-    plt.title(str(SolutionProbabilityTimeReliability*100)+'% Cost is '+"{:.2f}".format(FinalCost))
+    plt.ylabel('CDF', fontsize=20)
+    plt.xlabel('Tour Time', fontsize=20)
+    plt.yticks(fontsize=20)
+    for m in range(NumberOfCars):
+        colr = col_vec[m%len(col_vec)]
+        sorted = np.sort(FinalTime[:,m])
+        indx = int(SolutionProbabilityTimeReliability*Nmc)
+        plt.plot([sorted[indx],sorted[indx]],[0,1],'--',color=colr)
+
+
+
     plt.subplot(2,1,2)
     for m in range(NumberOfCars):
         colr = col_vec[m%len(col_vec)]
-        sns.kdeplot(MinEnergyLevel[:,m],color=colr, cumulative=True )
+        sns.kdeplot(MinEnergyLevel[:,m],color=colr, cumulative=True, linewidth=4 )
     plt.grid('on')
-    plt.ylabel('Min Energy')
-    plt.xlabel('Monte-Carlo Simulation')
-    plt.title(str(SolutionProbabilityEnergyReliability*100)+'% Energy Reliability')
-    plt.legend(leg_str2)
+    plt.ylabel('CDF', fontsize=20)
+    plt.xlabel('Min SoC Along the Tour', fontsize=20)
+    plt.yscale('log')
+    plt.ylim([1e-4,1])
+    # plt.title(str(SolutionProbabilityEnergyReliability*100)+'% Energy Reliability')
+    plt.legend(leg_str2, fontsize=20)
     FileName = SolverType+"_N"+str(NominalPlan.N)+"_Cars"+str(NominalPlan.NumberOfCars)+"_MaxNodesPerCar"+str(NominalPlan.MaxNumberOfNodesPerCar)+"_MaxNodesToSolver"+str(NominalPlan.MaxNodesToSolver)+"Method"+str(NominalPlan.ClusteringMethod)+"_RechargeModel"+str(PltParams.RechargeModel)
     ScenarioName = ScenarioFileName.split('/')[-1].split('.')[0]
-    plt.savefig("Results//"+ScenarioName+"//CDF_"+FileName, dpi=200)
+    
 
-
+    figManager = plt.get_current_fig_manager()
+    figManager.window.showMaximized()
+    plt.savefig("Results//"+ScenarioName+"//CDF_"+FileName, dpi=200, bbox_inches='tight')
     # plt.show()
 
     print("Finished")
@@ -545,12 +565,12 @@ if __name__ == "__main__":
     AvgCalcTime = 0.0
     AvgCalcTime_Gurobi = 0.0
     Nmc = 1
-    i = 0
+    i = 30
     n=0
     while n< Nmc:
         i += 1
         FinalCost, FinalCost_Grobi, CalcTime, CalcTime_Gurobi = main(i, iplot = 0)
-        if FinalCost_Grobi == 0.0:
+        if FinalCost == 0.0:
             continue
         n += 1
         SolGap += (FinalCost_Grobi-FinalCost)/FinalCost_Grobi
